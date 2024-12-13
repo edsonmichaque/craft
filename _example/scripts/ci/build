@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Main build script
+# Entry point for CI build process
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting build pipeline"
+    
+    # Run dependency checks
+    "${PROJECT_ROOT}/scripts/ci/tasks/deps.sh"
+    
+    # Run linters
+    "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh"
+    
+    # Run tests
+    "${PROJECT_ROOT}/scripts/ci/tasks/test.sh"
+    
+    # Build binaries
+    "${PROJECT_ROOT}/scripts/ci/tasks/build.sh"
+    
+    # Build Docker images
+    "${PROJECT_ROOT}/scripts/ci/tasks/docker.sh"
+    
+    log_info "Build pipeline completed successfully!"
+}
+
+main "$@"

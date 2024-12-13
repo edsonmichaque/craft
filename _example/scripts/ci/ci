@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Main CI script
+# Entry point for CI pipeline
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting CI pipeline"
+    
+    # Load appropriate environment
+    load_env "${CI_ENVIRONMENT_NAME:-development}"
+    
+    case "${CI_PIPELINE_TYPE:-build}" in
+        "build")
+            "${PROJECT_ROOT}/scripts/ci/build"
+            ;;
+        "test")
+            "${PROJECT_ROOT}/scripts/ci/test"
+            ;;
+        "release")
+            "${PROJECT_ROOT}/scripts/ci/tasks/release.sh" "${CI_COMMIT_TAG}"
+            ;;
+        *)
+            log_error "Unknown pipeline type: ${CI_PIPELINE_TYPE}"
+            exit 1
+            ;;
+    esac
+    
+    log_info "CI pipeline completed successfully!"
+}
+
+main "$@"

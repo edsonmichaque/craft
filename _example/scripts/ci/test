@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Main test script
+# Entry point for CI test process
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting test pipeline"
+    
+    # Run linters
+    "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh"
+    
+    # Run tests with coverage
+    "${PROJECT_ROOT}/scripts/ci/tasks/test.sh"
+    
+    log_info "Test pipeline completed successfully!"
+}
+
+main "$@"

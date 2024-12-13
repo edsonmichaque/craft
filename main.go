@@ -134,6 +134,11 @@ func generateProject(cfg Config) error {
 		return err
 	}
 
+	// Add this line to generate CI scripts
+	if err := generateCIScripts(projectPath, cfg); err != nil {
+		return fmt.Errorf("failed to generate CI scripts: %w", err)
+	}
+
 	for _, feature := range cfg.Includes {
 		switch strings.ToLower(feature) {
 		case "server":
@@ -1289,19 +1294,29 @@ func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string)
 		EnvPrefix:    cfg.EnvPrefix,
 	}
 
-	var templates map[string]string
-	if cfg.CLIFramework == "urfave" {
-		templates = map[string]string{
-			"root.go":    urfaveMainTemplate,
-			"version.go": urfaveVersionCommandTemplate,
-			"server.go":  urfaveServerCommandTemplate,
-		}
-	} else {
-		templates = map[string]string{
-			"root.go":    rootCommandTemplate,
-			"version.go": versionCommandTemplate,
-			"server.go":  serverCommandTemplate,
-		}
+	// Add missing imports
+	templates := map[string]string{
+		"root.go": rootCommandTemplate + `
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/spf13/cobra"
+)`,
+		"version.go": versionCommandTemplate + `
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+	"{{.ModulePrefix}}/pkg/version"
+)`,
+		"server.go": serverCommandTemplate + `
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)`,
 	}
 
 	// Generate command files
@@ -1390,95 +1405,96 @@ func generateConfigPackage(projectPath string, cfg Config) error {
 		"config.go": `package config
 
 import (
-    "fmt"
-    "os"
-    "path/filepath"
-    "strings"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
-    "github.com/spf13/viper"
+	"github.com/spf13/viper"
 )
 
 // Config holds all configuration sections
 type Config struct {
-    Server   ServerConfig   ` + "`mapstructure:\"server\" yaml:\"server\"`" + `
-    Database DatabaseConfig ` + "`mapstructure:\"database\" yaml:\"database\"`" + `
-    Logger   LoggerConfig  ` + "`mapstructure:\"logger\" yaml:\"logger\"`" + `
+	Server   ServerConfig   ` + "`mapstructure:\"server\" yaml:\"server\"`" + `
+	Database DatabaseConfig ` + "`mapstructure:\"database\" yaml:\"database\"`" + `
+	Logger   LoggerConfig  ` + "`mapstructure:\"logger\" yaml:\"logger\"`" + `
 }
 
 // Load reads configuration from file and environment variables
 func Load(opts ...Option) (*Config, error) {
-    // Default options
-    options := &options{
-        configFormat:   "yaml",
-        validateConfig: true,
-        configDirs:    []string{"/etc/{{.ProjectName}}", "$HOME/.config/{{.ProjectName}}"},
-        envPrefix:     "{{.EnvPrefix}}",
-        logger:        defaultLogger{},
-    }
+	// Default options
+	options := &options{
+		configFormat:   "yaml",
+		validateConfig: true,
+		configDirs:    []string{"/etc/{{.ProjectName}}", "$HOME/.config/{{.ProjectName}}"},
+		envPrefix:     "{{.EnvPrefix}}",
+		logger:        defaultLogger{},
+	}
 
-    // Apply provided options
-    for _, opt := range opts {
-        opt(options)
-    }
+	// Apply provided options
+	for _, opt := range opts {
+		opt(options)
+	}
 
-    v := viper.New()
+	v := viper.New()
 
-    // Set config name and type if file is provided
-    if options.configFile != "" {
-        v.SetConfigFile(options.configFile)
-    } else {
-        v.SetConfigName("config")
-        v.SetConfigType(options.configFormat)
-    }
+	// Set config name and type if file is provided
+	if options.configFile != "" {
+		v.SetConfigFile(options.configFile)
+	} else {
+		v.SetConfigName("config")
+		v.SetConfigType(options.configFormat)
+	}
 
-    // Add config paths
-    for _, dir := range options.configDirs {
-        v.AddConfigPath(dir)
-    }
+	// Add config paths
+	for _, dir := range options.configDirs {
+		v.AddConfigPath(dir)
+	}
 
-    // Set environment variable prefix
-    if options.envPrefix != "" {
-        v.SetEnvPrefix(options.envPrefix)
-        v.AutomaticEnv()
-        v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-    }
+	// Set environment variable prefix
+	if options.envPrefix != "" {
+		v.SetEnvPrefix(options.envPrefix)
+		v.AutomaticEnv()
+		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	}
 
-    // Set defaults if provided
-    if options.defaultConfig != nil {
-        if err := v.MergeConfigMap(structToMap(options.defaultConfig)); err != nil {
-            return nil, fmt.Errorf("failed to set defaults: %w", err)
-        }
-    }
+	// Set defaults if provided
+	if options.defaultConfig != nil {
+		if err := v.MergeConfigMap(structToMap(options.defaultConfig)); err != nil {
+			return nil, fmt.Errorf("failed to set defaults: %w", err)
+		}
+	}
 
-    // Read config file
-    if err := v.ReadInConfig(); err != nil {
-        if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-            return nil, fmt.Errorf("failed to read config file: %w", err)
-        }
-        options.logger.Debug("No config file found, using defaults and environment variables")
-    }
+	// Read config file
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		options.logger.Debug("No config file found, using defaults and environment variables")
+	}
 
-    config := &Config{}
-    if err := v.Unmarshal(config); err != nil {
-        return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-    }
+	config := &Config{}
+	if err := v.Unmarshal(config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
 
-    // Validate if enabled
-    if options.validateConfig {
-        if err := config.Validate(); err != nil {
-            return nil, fmt.Errorf("config validation failed: %w", err)
-        }
-    }
+	// Validate if enabled
+	if options.validateConfig {
+		if err := config.Validate(); err != nil {
+			return nil, fmt.Errorf("config validation failed: %w", err)
+		}
+	}
 
-    return config, nil
+	return config, nil
 }
 
 // Helper function to convert struct to map
 func structToMap(obj interface{}) map[string]interface{} {
-    data, _ := json.Marshal(obj)
-    result := make(map[string]interface{})
-    json.Unmarshal(data, &result)
-    return result
+	data, _ := json.Marshal(obj)
+	result := make(map[string]interface{})
+	json.Unmarshal(data, &result)
+	return result
 }
 
 // Default logger implementation
@@ -1490,11 +1506,11 @@ func (l defaultLogger) Error(args ...interface{}) {}
 
 // Add validation method to Config
 func (c *Config) Validate() error {
-    if c.Server.Port < 0 || c.Server.Port > 65535 {
-        return fmt.Errorf("invalid server port: %d", c.Server.Port)
-    }
-    // Add more validation as needed
-    return nil
+	if c.Server.Port < 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("invalid server port: %d", c.Server.Port)
+	}
+	// Add more validation as needed
+	return nil
 }`,
 
 		"server.go": `package config
@@ -1503,61 +1519,61 @@ import "time"
 
 // ServerConfig holds all server-related configuration
 type ServerConfig struct {
-    Host           string        ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
-    Port           int           ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
-    ReadTimeout    time.Duration ` + "`mapstructure:\"read_timeout\" yaml:\"read_timeout\"`" + `
-    WriteTimeout   time.Duration ` + "`mapstructure:\"write_timeout\" yaml:\"write_timeout\"`" + `
-    MaxHeaderBytes int           ` + "`mapstructure:\"max_header_bytes\" yaml:\"max_header_bytes\"`" + `
-    AllowedOrigins []string      ` + "`mapstructure:\"allowed_origins\" yaml:\"allowed_origins\"`" + `
+	Host           string        ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
+	Port           int           ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
+	ReadTimeout    time.Duration ` + "`mapstructure:\"read_timeout\" yaml:\"read_timeout\"`" + `
+	WriteTimeout   time.Duration ` + "`mapstructure:\"write_timeout\" yaml:\"write_timeout\"`" + `
+	MaxHeaderBytes int           ` + "`mapstructure:\"max_header_bytes\" yaml:\"max_header_bytes\"`" + `
+	AllowedOrigins []string      ` + "`mapstructure:\"allowed_origins\" yaml:\"allowed_origins\"`" + `
 }
 
 // GetAddress returns the full address string for the server
 func (c ServerConfig) GetAddress() string {
-    return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }`,
 
 		"database.go": `package config
 
 // DatabaseConfig holds all database-related configuration
 type DatabaseConfig struct {
-    Host     string ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
-    Port     int    ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
-    Name     string ` + "`mapstructure:\"name\" yaml:\"name\"`" + `
-    User     string ` + "`mapstructure:\"user\" yaml:\"user\"`" + `
-    Password string ` + "`mapstructure:\"password\" yaml:\"password\"`" + `
-    SSLMode  string ` + "`mapstructure:\"ssl_mode\" yaml:\"ssl_mode\"`" + `
+	Host     string ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
+	Port     int    ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
+	Name     string ` + "`mapstructure:\"name\" yaml:\"name\"`" + `
+	User     string ` + "`mapstructure:\"user\" yaml:\"user\"`" + `
+	Password string ` + "`mapstructure:\"password\" yaml:\"password\"`" + `
+	SSLMode  string ` + "`mapstructure:\"ssl_mode\" yaml:\"ssl_mode\"`" + `
 }
 
 // GetDSN returns the database connection string
 func (c DatabaseConfig) GetDSN() string {
-    return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
-        c.Host, c.Port, c.Name, c.User, c.Password, c.SSLMode)
+	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
+		c.Host, c.Port, c.Name, c.User, c.Password, c.SSLMode)
 }`,
 
 		"logger.go": `package config
 
 // LoggerConfig holds all logging-related configuration
 type LoggerConfig struct {
-    Level  string            ` + "`mapstructure:\"level\" yaml:\"level\"`" + `
-    Format string            ` + "`mapstructure:\"format\" yaml:\"format\"`" + `
-    Output string            ` + "`mapstructure:\"output\" yaml:\"output\"`" + `
-    Fields map[string]string ` + "`mapstructure:\"fields\" yaml:\"fields\"`" + `
+	Level  string            ` + "`mapstructure:\"level\" yaml:\"level\"`" + `
+	Format string            ` + "`mapstructure:\"format\" yaml:\"format\"`" + `
+	Output string            ` + "`mapstructure:\"output\" yaml:\"output\"`" + `
+	Fields map[string]string ` + "`mapstructure:\"fields\" yaml:\"fields\"`" + `
 }`,
 
 		"config_test.go": `package config
 
 import (
-    "testing"
-    "os"
-    "path/filepath"
+	"testing"
+	"os"
+	"path/filepath"
 )
 
 func TestLoad(t *testing.T) {
-    // Create a temporary config file
-    tmpDir := t.TempDir()
-    configFile := filepath.Join(tmpDir, "config.yml")
-    
-    configContent := []byte(` + "`" + `
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yml")
+	
+	configContent := []byte(` + "`" + `
 server:
   host: "127.0.0.1"
   port: 8080
@@ -1567,30 +1583,30 @@ database:
 logger:
   level: "debug"
 ` + "`" + `)
-    
-    if err := os.WriteFile(configFile, configContent, 0644); err != nil {
-        t.Fatalf("Failed to write test config file: %v", err)
-    }
-    
-    cfg, err := Load(configFile)
-    if err != nil {
-        t.Fatalf("Failed to load config: %v", err)
-    }
-    
-    // Test server config
-    if cfg.Server.Host != "127.0.0.1" {
-        t.Errorf("Expected server host 127.0.0.1, got %s", cfg.Server.Host)
-    }
-    
-    // Test database config
-    if cfg.Database.Host != "localhost" {
-        t.Errorf("Expected database host localhost, got %s", cfg.Database.Host)
-    }
-    
-    // Test logger config
-    if cfg.Logger.Level != "debug" {
-        t.Errorf("Expected logger level debug, got %s", cfg.Logger.Level)
-    }
+	
+	if err := os.WriteFile(configFile, configContent, 0644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+	
+	cfg, err := Load(configFile)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+	
+	// Test server config
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Errorf("Expected server host 127.0.0.1, got %s", cfg.Server.Host)
+	}
+	
+	// Test database config
+	if cfg.Database.Host != "localhost" {
+		t.Errorf("Expected database host localhost, got %s", cfg.Database.Host)
+	}
+	
+	// Test logger config
+	if cfg.Logger.Level != "debug" {
+		t.Errorf("Expected logger level debug, got %s", cfg.Logger.Level)
+	}
 }`,
 	}
 
@@ -1679,85 +1695,42 @@ import (
 
 func generateCommonFiles(projectPath string, cfg Config) error {
 	// Map of filenames to their content generation functions
-	files := map[string]func(Config) string{
-		"README.md": generateReadme,
-		"LICENSE": func(c Config) string {
-			return generateLicense(c, c.LicenseTemplate)
-		},
-		"go.mod": generateGoMod,
-		"Makefile": func(c Config) string {
-			tmpl, err := template.New("makefile").Parse(makefileTemplate)
-			if err != nil {
-				return ""
-			}
-			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, c); err != nil {
-				return ""
-			}
-			return buf.String()
-		},
-		".gitignore": func(c Config) string { return defaultGitignore },
-		".env": func(c Config) string {
-			tmpl, err := template.New("env").Parse(envFileTemplate)
-			if err != nil {
-				return ""
-			}
-			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, c); err != nil {
-				return ""
-			}
-			return buf.String()
-		},
-		".air.toml": func(c Config) string {
-			binary := c.Binaries[0]
-			tmpl, err := template.New("air").Parse(airConfigTemplate)
-			if err != nil {
-				return ""
-			}
-			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, struct{ Binary string }{Binary: binary}); err != nil {
-				return ""
-			}
-			return buf.String()
-		},
+	files := map[string]struct {
+		template string
+		mode     os.FileMode
+	}{
+		"README.md":  {generateReadme(cfg), 0644},
+		"LICENSE":    {generateLicense(cfg, cfg.LicenseTemplate), 0644},
+		"go.mod":     {generateGoMod(cfg), 0644},
+		"Makefile":   {executeTemplate(makefileTemplate, cfg), 0644},
+		".gitignore": {defaultGitignore, 0644},
+		".env":       {executeTemplate(envFileTemplate, cfg), 0644},
+		".air.toml":  {executeTemplate(airConfigTemplate, struct{ Binary string }{Binary: cfg.Binaries[0]}), 0644},
 	}
 
-	// Generate each file
-	for filename, generator := range files {
-		content := generator(cfg)
-		if content == "" {
-			continue // Skip if generator returned empty content
-		}
-
+	for filename, file := range files {
 		filepath := path.Join(projectPath, filename)
-
-		// Ensure directory exists for the file
-		if dir := path.Dir(filepath); dir != "." {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return fmt.Errorf("failed to create directory for %s: %w", filename, err)
-			}
+		if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s: %w", filename, err)
 		}
-
-		if err := os.WriteFile(filepath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filepath, []byte(file.template), file.mode); err != nil {
 			return fmt.Errorf("failed to write %s: %w", filename, err)
 		}
 	}
 
-	// Generate commands package
-	if err := generateCommandsPackage(projectPath, cfg); err != nil {
-		return fmt.Errorf("failed to generate commands package: %w", err)
-	}
-
-	// Add required dependencies to go.mod based on CLI framework
-	if cfg.CLIFramework == "urfave" {
-		// Add urfave/cli dependency
-		// TODO: Implement go.mod modification for urfave/cli
-	} else {
-		// Add cobra dependency
-		// TODO: Implement go.mod modification for cobra
-	}
-
 	return nil
+}
+
+func executeTemplate(tmpl string, data interface{}) string {
+	t, err := template.New("").Parse(tmpl)
+	if err != nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 const defaultGitignore = `# Binaries for programs and plugins
@@ -1800,3 +1773,1046 @@ temp/
 func cleanPackageName(name string) string {
 	return strings.Replace(name, "-", "", -1)
 }
+
+func generateCIScripts(projectPath string, cfg Config) error {
+	ciDir := filepath.Join(projectPath, "scripts", "ci")
+
+	// Create subdirectories for better organization
+	dirs := []string{
+		"lib",   // Shared libraries
+		"tasks", // Individual task scripts
+		"utils", // Utility scripts
+		"hooks", // Git hooks
+		"env",   // Environment configurations
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(filepath.Join(ciDir, dir), 0755); err != nil {
+			return fmt.Errorf("failed to create CI directory %s: %w", dir, err)
+		}
+	}
+
+	// Generate script files
+	scripts := map[string]string{
+		// Core library files
+		"lib/common.sh":  commonLibTemplate,
+		"lib/logger.sh":  loggerLibTemplate,
+		"lib/docker.sh":  dockerLibTemplate,
+		"lib/git.sh":     gitLibTemplate,
+		"lib/version.sh": versionLibTemplate,
+
+		// Task scripts
+		"tasks/build.sh":        buildTaskTemplate,
+		"tasks/test.sh":         testTaskTemplate,
+		"tasks/lint.sh":         lintTaskTemplate,
+		"tasks/release.sh":      releaseTaskTemplate,
+		"tasks/docker.sh":       dockerTaskTemplate,
+		"tasks/proto.sh":        protoTaskTemplate,
+		"tasks/dependencies.sh": dependenciesTaskTemplate,
+
+		// Utility scripts
+		"utils/health-check.sh": healthCheckTemplate,
+		"utils/cleanup.sh":      cleanupTemplate,
+		"utils/setup-dev.sh":    setupDevTemplate,
+
+		// Main entry points
+		"build": mainBuildTemplate,
+		"test":  mainTestTemplate,
+		"ci":    mainCITemplate,
+	}
+
+	for filename, content := range scripts {
+		filepath := path.Join(ciDir, filename)
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s: %w", filename, err)
+		}
+
+		if err := generateFileFromTemplate(filepath, content, cfg); err != nil {
+			return fmt.Errorf("failed to generate CI script %s: %w", filename, err)
+		}
+
+		// Make the script executable
+		if err := os.Chmod(filepath, 0755); err != nil {
+			return fmt.Errorf("failed to make %s executable: %w", filename, err)
+		}
+	}
+
+	return nil
+}
+
+const commonLibTemplate = `#!/usr/bin/env bash
+# Common library for CI scripts
+# Provides core functionality used across all scripts
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# Script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Import other libraries
+source "${SCRIPT_DIR}/logger.sh"
+source "${SCRIPT_DIR}/version.sh"
+
+# Global variables
+export CI_COMMIT_SHA="${CI_COMMIT_SHA:-$(git rev-parse HEAD)}"
+export CI_COMMIT_SHORT_SHA="${CI_COMMIT_SHORT_SHA:-$(git rev-parse --short HEAD)}"
+export CI_COMMIT_BRANCH="${CI_COMMIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+export CI_COMMIT_TAG="${CI_COMMIT_TAG:-$(git describe --tags --exact-match 2>/dev/null || echo '')}"
+export CI_PIPELINE_ID="${CI_PIPELINE_ID:-local-$$}"
+export CI_PROJECT_NAME="{{.ProjectName}}"
+export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-{{.ProjectName}}}"
+
+# Environment detection
+is_ci() {
+    [[ -n "${CI:-}" ]]
+}
+
+is_debug() {
+    [[ -n "${DEBUG:-}" ]]
+}
+
+is_dry_run() {
+    [[ -n "${DRY_RUN:-}" ]]
+}
+
+# Error handling
+trap 'error_handler $?' ERR
+
+error_handler() {
+    local exit_code=$1
+    log_error "Error occurred in $(caller) with exit code $exit_code"
+    exit "$exit_code"
+}
+
+# Utility functions
+retry() {
+    local retries=${1:-3}
+    local wait=${2:-5}
+    local cmd=${@:3}
+    local retry_count=0
+
+    until [[ $retry_count -ge $retries ]]; do
+        if eval "$cmd"; then
+            return 0
+        fi
+        retry_count=$((retry_count + 1))
+        log_warn "Command failed, attempt $retry_count/$retries"
+        sleep "$wait"
+    done
+    return 1
+}
+
+ensure_command() {
+    local cmd=$1
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        log_error "Required command not found: $cmd"
+        exit 1
+    fi
+}
+
+# Configuration management
+load_env() {
+    local env=${1:-development}
+    local env_file="${PROJECT_ROOT}/scripts/ci/env/${env}.env"
+    
+    if [[ -f "$env_file" ]]; then
+        log_info "Loading environment from $env_file"
+        set -o allexport
+        source "$env_file"
+        set +o allexport
+    else
+        log_warn "Environment file not found: $env_file"
+    fi
+}
+
+# Cleanup handling
+cleanup() {
+    local exit_code=$?
+    log_info "Cleaning up..."
+    # Add cleanup tasks here
+    exit "$exit_code"
+}
+trap cleanup EXIT
+`
+
+const loggerLibTemplate = `#!/usr/bin/env bash
+# Logger library for CI scripts
+# Provides standardized logging functionality
+
+# Colors
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly PURPLE='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly GRAY='\033[0;90m'
+readonly NC='\033[0m'
+
+# Log levels
+declare -A LOG_LEVELS=( 
+    ["DEBUG"]=0
+    ["INFO"]=1
+    ["WARN"]=2
+    ["ERROR"]=3
+    ["FATAL"]=4
+)
+LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+# Logging functions
+log() {
+    local level=$1
+    local message=$2
+    local color=$3
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    if [[ ${LOG_LEVELS[$level]} -ge ${LOG_LEVELS[$LOG_LEVEL]} ]]; then
+        printf "%b%s [%b%s%b] %s%b\n" \
+            "$GRAY" "$timestamp" \
+            "$color" "$level" "$GRAY" \
+            "$message" "$NC" >&2
+    fi
+}
+
+log_debug() { log "DEBUG" "$1" "$GRAY"; }
+log_info() { log "INFO" "$1" "$GREEN"; }
+log_warn() { log "WARN" "$1" "$YELLOW"; }
+log_error() { log "ERROR" "$1" "$RED"; }
+log_fatal() { log "FATAL" "$1" "$RED"; exit 1; }
+
+# Progress indicators
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while ps -p "$pid" > /dev/null; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
+
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-50}
+    local percentage=$((current * 100 / total))
+    local completed=$((width * current / total))
+    local remaining=$((width - completed))
+
+    printf "\rProgress: ["
+    printf "%${completed}s" | tr ' ' '='
+    printf "%${remaining}s" | tr ' ' ' '
+    printf "] %d%%" "$percentage"
+}
+`
+
+const dockerLibTemplate = `#!/usr/bin/env bash
+# Docker utility functions
+
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+# Docker build with caching and multi-stage optimization
+docker_build() {
+    local image=$1
+    local dockerfile=$2
+    local context=${3:-.}
+    local cache_from=""
+    local build_args=()
+
+    # Add build arguments
+    build_args+=(--build-arg "VERSION=${CI_COMMIT_TAG:-dev}")
+    build_args+=(--build-arg "COMMIT=${CI_COMMIT_SHA}")
+    build_args+=(--build-arg "BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")")
+
+    # Use cache from previous builds if available
+    if [[ -n "${CI_REGISTRY_IMAGE:-}" ]]; then
+        cache_from="--cache-from ${CI_REGISTRY_IMAGE}:${CI_COMMIT_BRANCH:-main}"
+    fi
+
+    log_info "Building Docker image: $image"
+    docker build \
+        "${build_args[@]}" \
+        $cache_from \
+        -t "$image" \
+        -f "$dockerfile" \
+        "$context"
+}
+
+# Push image with retries and fallback tags
+docker_push() {
+    local image=$1
+    local registry=${2:-}
+    local retries=3
+
+    if [[ -n "$registry" ]]; then
+        image="${registry}/${image}"
+    fi
+
+    log_info "Pushing Docker image: $image"
+    retry "$retries" 5 docker push "$image"
+
+    # Tag and push additional tags if this is a release
+    if [[ -n "${CI_COMMIT_TAG:-}" ]]; then
+        local version_tag="${image}:${CI_COMMIT_TAG}"
+        local latest_tag="${image}:latest"
+        
+        docker tag "$image" "$version_tag"
+        docker tag "$image" "$latest_tag"
+        
+        retry "$retries" 5 docker push "$version_tag"
+        retry "$retries" 5 docker push "$latest_tag"
+    fi
+}
+
+# Clean up old images and containers
+docker_cleanup() {
+    log_info "Cleaning up Docker resources"
+    
+    # Remove stopped containers
+    docker container prune -f
+    
+    # Remove unused images
+    docker image prune -f
+    
+    # Remove unused volumes
+    docker volume prune -f
+}
+`
+
+const buildTaskTemplate = `#!/usr/bin/env bash
+# Build task script
+# Handles building all project binaries
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+# Build configuration
+BUILD_DIR="${PROJECT_ROOT}/bin"
+DIST_DIR="${PROJECT_ROOT}/dist"
+PLATFORMS=("linux/amd64" "darwin/amd64" "windows/amd64")
+CGO_ENABLED=0
+
+build_binary() {
+    local binary=$1
+    local os=$2
+    local arch=$3
+    local output
+    
+    if [[ $os == "windows" ]]; then
+        output="${BUILD_DIR}/${binary}-${os}-${arch}.exe"
+    else
+        output="${BUILD_DIR}/${binary}-${os}-${arch}"
+    fi
+
+    log_info "Building ${binary} for ${os}/${arch}"
+    
+    GOOS=$os GOARCH=$arch CGO_ENABLED=$CGO_ENABLED \
+    go build -ldflags "${LDFLAGS}" \
+        -o "$output" \
+        "${PROJECT_ROOT}/cmd/${binary}"
+}
+
+build_all() {
+    mkdir -p "$BUILD_DIR"
+    
+    for binary in {{range .Binaries}}"{{.}}" {{end}}; do
+        for platform in "${PLATFORMS[@]}"; do
+            IFS='/' read -r os arch <<< "$platform"
+            build_binary "$binary" "$os" "$arch"
+        done
+    done
+}
+
+package_artifacts() {
+    mkdir -p "$DIST_DIR"
+    
+    for binary in {{range .Binaries}}"{{.}}" {{end}}; do
+        for platform in "${PLATFORMS[@]}"; do
+            IFS='/' read -r os arch <<< "$platform"
+            local src="${BUILD_DIR}/${binary}-${os}-${arch}"
+            local dst="${DIST_DIR}/${binary}-${os}-${arch}"
+            
+            if [[ $os == "windows" ]]; then
+                src="${src}.exe"
+                dst="${dst}.exe"
+            fi
+            
+            cp "$src" "$dst"
+            
+            # Create checksums
+            (cd "$DIST_DIR" && sha256sum "$(basename "$dst")" > "$(basename "$dst").sha256")
+        done
+    done
+}
+
+main() {
+    log_info "Starting build process"
+    
+    # Verify required tools
+    ensure_command "go"
+    
+    # Set version information
+    VERSION=$(get_version)
+    COMMIT=$(get_commit)
+    DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    # Set build flags
+    LDFLAGS="-s -w \
+        -X '{{.ModulePrefix}}/pkg/version.Version=${VERSION}' \
+        -X '{{.ModulePrefix}}/pkg/version.GitCommit=${COMMIT}' \
+        -X '{{.ModulePrefix}}/pkg/version.BuildTime=${DATE}'"
+    
+    build_all
+    package_artifacts
+    
+    log_info "Build complete!"
+}
+
+main "$@"
+`
+
+const gitLibTemplate = `#!/usr/bin/env bash
+# Git utility functions
+
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+# Get the current git branch
+get_branch() {
+    git rev-parse --abbrev-ref HEAD
+}
+
+# Get the latest git tag
+get_latest_tag() {
+    git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"
+}
+
+# Check if working directory is clean
+is_working_directory_clean() {
+    [[ -z "$(git status --porcelain)" ]]
+}
+
+# Get all changes since last tag
+get_changelog() {
+    local latest_tag
+    latest_tag=$(get_latest_tag)
+    git log "${latest_tag}..HEAD" --pretty=format:"- %s" --no-merges
+}
+
+# Tag the current commit
+tag_version() {
+    local version=$1
+    local message=${2:-"Release ${version}"}
+    
+    if ! is_working_directory_clean; then
+        log_error "Working directory is not clean"
+        return 1
+    fi
+    
+    git tag -a "$version" -m "$message"
+    git push origin "$version"
+}
+`
+
+const versionLibTemplate = `#!/usr/bin/env bash
+# Version management functions
+
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+# Get the current version
+get_version() {
+    if [[ -n "${CI_COMMIT_TAG:-}" ]]; then
+        echo "$CI_COMMIT_TAG"
+    else
+        echo "dev"
+    fi
+}
+
+# Get the current commit hash
+get_commit() {
+    git rev-parse HEAD
+}
+
+# Get the current commit short hash
+get_commit_short() {
+    git rev-parse --short HEAD
+}
+
+# Bump version according to semver
+bump_version() {
+    local current_version=$1
+    local bump_type=${2:-patch}
+    
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "${current_version#v}"
+    
+    case "$bump_type" in
+        major) echo "v$((major + 1)).0.0" ;;
+        minor) echo "v${major}.$((minor + 1)).0" ;;
+        patch) echo "v${major}.${minor}.$((patch + 1))" ;;
+        *) echo "$current_version" ;;
+    esac
+}
+`
+
+const testTaskTemplate = `#!/usr/bin/env bash
+# Test task script
+# Runs all project tests
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+run_tests() {
+    local coverage_dir="${PROJECT_ROOT}/coverage"
+    mkdir -p "$coverage_dir"
+    
+    log_info "Running tests with coverage"
+    go test -race -coverprofile="${coverage_dir}/coverage.out" -covermode=atomic ./...
+    
+    if command -v go-junit-report >/dev/null 2>&1; then
+        go test -v ./... 2>&1 | go-junit-report > "${coverage_dir}/report.xml"
+    fi
+    
+    if command -v gocov >/dev/null 2>&1; then
+        gocov convert "${coverage_dir}/coverage.out" | gocov-html > "${coverage_dir}/coverage.html"
+    fi
+}
+
+main() {
+    log_info "Starting test suite"
+    
+    # Verify required tools
+    ensure_command "go"
+    
+    run_tests
+    
+    log_info "Tests completed successfully!"
+}
+
+main "$@"
+`
+
+const lintTaskTemplate = `#!/usr/bin/env bash
+# Lint task script
+# Runs all linters and code quality checks
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+run_linters() {
+    log_info "Running golangci-lint"
+    golangci-lint run ./...
+    
+    log_info "Running go vet"
+    go vet ./...
+    
+    log_info "Checking go fmt"
+    if [ -n "$(gofmt -l .)" ]; then
+        log_error "Code is not formatted. Please run 'go fmt ./...'"
+        return 1
+    fi
+}
+
+main() {
+    log_info "Starting code quality checks"
+    
+    # Verify required tools
+    ensure_command "golangci-lint"
+    ensure_command "go"
+    
+    run_linters
+    
+    log_info "Code quality checks passed!"
+}
+
+main "$@"
+`
+
+const releaseTaskTemplate = `#!/usr/bin/env bash
+# Release task script
+# Handles versioning and release process
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+create_release() {
+    local version=$1
+    local branch=${2:-main}
+    
+    log_info "Creating release ${version} from branch ${branch}"
+    
+    # Ensure we're on the correct branch
+    git checkout "$branch"
+    git pull origin "$branch"
+    
+    # Tag the release
+    tag_version "$version"
+    
+    # Build and package
+    "${PROJECT_ROOT}/scripts/ci/tasks/build.sh"
+    
+    # Create GitHub release if gh CLI is available
+    if command -v gh >/dev/null 2>&1; then
+        gh release create "$version" \
+            --title "Release ${version}" \
+            --notes "$(get_changelog)" \
+            ./dist/*
+    fi
+}
+
+main() {
+    local version=${1:-}
+    local branch=${2:-main}
+    
+    if [[ -z "$version" ]]; then
+        log_error "Version parameter is required"
+        exit 1
+    fi
+    
+    create_release "$version" "$branch"
+    
+    log_info "Release ${version} created successfully!"
+}
+
+main "$@"
+`
+
+const dockerTaskTemplate = `#!/usr/bin/env bash
+# Docker task script
+# Handles Docker image building and publishing
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/docker.sh"
+
+build_images() {
+    local platforms="linux/amd64,linux/arm64"
+    
+    for binary in {{range .Binaries}}"{{.}}" {{end}}; do
+        log_info "Building multiplatform image for ${binary}"
+        docker buildx build --platform "${platforms}" \
+            -t "${CI_REGISTRY_IMAGE}/${binary}" \
+            -f "docker/${binary}.Dockerfile" .
+    done
+}
+
+push_images() {
+    local platforms="linux/amd64,linux/arm64"
+    
+    for binary in {{range .Binaries}}"{{.}}" {{end}}; do
+        log_info "Pushing multiplatform image for ${binary}"
+        docker buildx build --platform "${platforms}" \
+            -t "${CI_REGISTRY_IMAGE}/${binary}" \
+            -f "docker/${binary}.Dockerfile" \
+            --push .
+    done
+}
+
+main() {
+    log_info "Starting Docker build process"
+    
+    # Verify required tools
+    ensure_command "docker"
+    
+    # Create and use buildx builder for multi-platform builds
+    if ! docker buildx inspect builder &>/dev/null; then
+        docker buildx create --name builder --use
+    else
+        docker buildx use builder
+    fi
+    
+    build_images
+    
+    if [[ -n "${CI:-}" ]]; then
+        push_images
+    fi
+    
+    log_info "Docker build complete!"
+}
+
+main "$@"
+`
+
+const protoTaskTemplate = `#!/usr/bin/env bash
+# Proto task script
+# Handles protobuf compilation
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+generate_protos() {
+    local proto_dir="${PROJECT_ROOT}/proto"
+    local api_dir="${PROJECT_ROOT}/api"
+    local proto_dirs=()
+    local proto_files=()
+    
+    # Discover proto directories
+    while IFS= read -r -d '' dir; do
+        proto_dirs+=("$dir")
+    done < <(find "${PROJECT_ROOT}" -type d \( -name "proto" -o -name "api" \) -print0)
+
+    if [ ${#proto_dirs[@]} -eq 0 ]; then
+        log_info "No proto directories found, skipping"
+        return 0
+    fi
+
+    # Discover proto files
+    for dir in "${proto_dirs[@]}"; do
+        while IFS= read -r -d '' file; do
+            proto_files+=("$file")
+        done < <(find "$dir" -name "*.proto" -type f -print0)
+    done
+
+    if [ ${#proto_files[@]} -eq 0 ]; then
+        log_info "No proto files found, skipping"
+        return 0
+    fi
+
+    log_info "Found ${#proto_files[@]} proto files in ${#proto_dirs[@]} directories"
+
+    # Create output directories if they don't exist
+    mkdir -p "${PROJECT_ROOT}/pkg/gen/proto"
+
+    # Generate Go code for each proto file
+    for proto_file in "${proto_files[@]}"; do
+        local rel_dir=$(dirname "${proto_file#${PROJECT_ROOT}/}")
+        local out_dir="${PROJECT_ROOT}/pkg/gen/${rel_dir}"
+        
+        mkdir -p "$out_dir"
+        
+        log_info "Generating code for: ${proto_file}"
+        
+        protoc \
+            --proto_path="${PROJECT_ROOT}" \
+            --proto_path="${GOPATH}/src" \
+            --proto_path="${GOPATH}/pkg/mod" \
+            --go_out="${PROJECT_ROOT}" \
+            --go_opt=paths=source_relative \
+            --go-grpc_out="${PROJECT_ROOT}" \
+            --go-grpc_opt=paths=source_relative \
+            --validate_out="lang=go,paths=source_relative:${PROJECT_ROOT}" \
+            --grpc-gateway_out="${PROJECT_ROOT}" \
+            --grpc-gateway_opt=paths=source_relative \
+            --openapiv2_out="${PROJECT_ROOT}/api/swagger" \
+            "$proto_file"
+    done
+
+    # Fix import paths if needed
+    find "${PROJECT_ROOT}/pkg/gen" -type f -name "*.go" -exec \
+        sed -i.bak "s,{{.ModulePrefix}}/proto,{{.ModulePrefix}}/pkg/gen/proto,g" {} \;
+    find "${PROJECT_ROOT}/pkg/gen" -type f -name "*.go.bak" -delete
+}
+
+install_proto_tools() {
+    log_info "Installing protobuf tools"
+
+    # Install protoc plugins
+    go install \
+        google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+        google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest \
+        github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest \
+        github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest \
+        github.com/envoyproxy/protoc-gen-validate@latest
+
+    # Install buf if available
+    if command -v brew >/dev/null 2>&1; then
+        brew install buf
+    elif command -v go >/dev/null 2>&1; then
+        go install github.com/bufbuild/buf/cmd/buf@latest
+    fi
+}
+
+verify_proto_tools() {
+    local missing_tools=()
+
+    # Check required tools
+    local tools=(
+        "protoc"
+        "protoc-gen-go"
+        "protoc-gen-go-grpc"
+        "protoc-gen-validate"
+        "protoc-gen-grpc-gateway"
+        "protoc-gen-openapiv2"
+    )
+
+    for tool in "${tools[@]}"; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing_tools+=("$tool")
+        fi
+    done
+
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        log_warn "Missing required tools: ${missing_tools[*]}"
+        log_info "Installing missing tools..."
+        install_proto_tools
+    fi
+}
+
+main() {
+    log_info "Starting protobuf generation"
+    
+    verify_proto_tools
+    generate_protos
+    
+    log_info "Protobuf generation complete!"
+}
+
+main "$@"
+`
+
+const dependenciesTaskTemplate = `#!/usr/bin/env bash
+# Dependencies task script
+# Manages project dependencies and required tools
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+update_dependencies() {
+    log_info "Updating Go dependencies"
+    go get -u ./...
+    go mod tidy
+}
+
+verify_dependencies() {
+    log_info "Verifying dependencies"
+    go mod verify
+}
+
+install_tools() {
+    log_info "Installing development tools"
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    go install github.com/golang/protobuf/protoc-gen-go@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+}
+
+main() {
+    log_info "Starting dependencies management"
+    
+    # Verify required tools
+    ensure_command "go"
+    
+    update_dependencies
+    verify_dependencies
+    
+    if [[ "${1:-}" == "--with-tools" ]]; then
+        install_tools
+    fi
+    
+    log_info "Dependencies management complete!"
+}
+
+main "$@"
+`
+
+const healthCheckTemplate = `#!/usr/bin/env bash
+# Health check utility
+# Verifies service health
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+check_service() {
+    local host=${1:-localhost}
+    local port=${2:-8080}
+    local endpoint=${3:-/health}
+    local timeout=${4:-5}
+    
+    curl --silent --fail \
+        --max-time "$timeout" \
+        "http://${host}:${port}${endpoint}"
+}
+
+main() {
+    log_info "Running health checks"
+    
+    for binary in {{range .Binaries}}"{{.}}" {{end}}; do
+        if ! check_service "localhost" "8080" "/health"; then
+            log_error "Service ${binary} is not healthy"
+            exit 1
+        fi
+    done
+    
+    log_info "All services are healthy!"
+}
+
+main "$@"
+`
+
+const cleanupTemplate = `#!/usr/bin/env bash
+# Cleanup utility
+# Removes temporary files and artifacts
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+cleanup_build() {
+    log_info "Cleaning build artifacts"
+    rm -rf "${PROJECT_ROOT}/bin"
+    rm -rf "${PROJECT_ROOT}/dist"
+}
+
+cleanup_deps() {
+    log_info "Cleaning dependency cache"
+    go clean -cache -modcache -i -r
+}
+
+cleanup_docker() {
+    log_info "Cleaning Docker resources"
+    source "$(dirname "${BASH_SOURCE[0]}")/../lib/docker.sh"
+    docker_cleanup
+}
+
+main() {
+    log_info "Starting cleanup process"
+    
+    cleanup_build
+    
+    if [[ "${1:-}" == "--deep" ]]; then
+        cleanup_deps
+        cleanup_docker
+    fi
+    
+    log_info "Cleanup complete!"
+}
+
+main "$@"
+`
+
+const setupDevTemplate = `#!/usr/bin/env bash
+# Development environment setup utility
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+setup_tools() {
+    log_info "Installing development tools"
+    
+    # Install Go tools
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    go install github.com/golang/protobuf/protoc-gen-go@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+    go install github.com/cosmtrek/air@latest
+    
+    # Install additional tools based on OS
+    case "$(uname)" in
+        "Darwin")
+            brew install protobuf
+            ;;
+        "Linux")
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+            ;;
+    esac
+}
+
+setup_hooks() {
+    log_info "Setting up Git hooks"
+    
+    local hooks_dir="${PROJECT_ROOT}/.git/hooks"
+    local ci_hooks_dir="${PROJECT_ROOT}/scripts/ci/hooks"
+    
+    # Link all hooks
+    for hook in "$ci_hooks_dir"/*; do
+        if [[ -f "$hook" ]]; then
+            ln -sf "$hook" "${hooks_dir}/$(basename "$hook")"
+        fi
+    done
+}
+
+main() {
+    log_info "Setting up development environment"
+    
+    setup_tools
+    setup_hooks
+    
+    # Initialize environment
+    cp -n "${PROJECT_ROOT}/.env.example" "${PROJECT_ROOT}/.env" 2>/dev/null || true
+    
+    log_info "Development environment setup complete!"
+}
+
+main "$@"
+`
+
+const mainBuildTemplate = `#!/usr/bin/env bash
+# Main build script
+# Entry point for CI build process
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting build pipeline"
+    
+    # Run dependency checks
+    "${PROJECT_ROOT}/scripts/ci/tasks/dependencies.sh"
+    
+    # Run linters
+    "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh"
+    
+    # Run tests
+    "${PROJECT_ROOT}/scripts/ci/tasks/test.sh"
+    
+    # Build binaries
+    "${PROJECT_ROOT}/scripts/ci/tasks/build.sh"
+    
+    # Build Docker images
+    "${PROJECT_ROOT}/scripts/ci/tasks/docker.sh"
+    
+    log_info "Build pipeline completed successfully!"
+}
+
+main "$@"
+`
+
+const mainTestTemplate = `#!/usr/bin/env bash
+# Main test script
+# Entry point for CI test process
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting test pipeline"
+    
+    # Run linters
+    "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh"
+    
+    # Run tests with coverage
+    "${PROJECT_ROOT}/scripts/ci/tasks/test.sh"
+    
+    log_info "Test pipeline completed successfully!"
+}
+
+main "$@"
+`
+
+const mainCITemplate = `#!/usr/bin/env bash
+# Main CI script
+# Entry point for CI pipeline
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    log_info "Starting CI pipeline"
+    
+    # Load appropriate environment
+    load_env "${CI_ENVIRONMENT_NAME:-development}"
+    
+    case "${CI_PIPELINE_TYPE:-build}" in
+        "build")
+            "${PROJECT_ROOT}/scripts/ci/build"
+            ;;
+        "test")
+            "${PROJECT_ROOT}/scripts/ci/test"
+            ;;
+        "release")
+            "${PROJECT_ROOT}/scripts/ci/tasks/release.sh" "${CI_COMMIT_TAG}"
+            ;;
+        *)
+            log_error "Unknown pipeline type: ${CI_PIPELINE_TYPE}"
+            exit 1
+            ;;
+    esac
+    
+    log_info "CI pipeline completed successfully!"
+}
+
+main "$@"
+`
