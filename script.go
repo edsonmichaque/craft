@@ -3870,6 +3870,7 @@ spec:
 	"build/helm/values.yaml":               helmValuesTemplate,
 	"build/helm/templates/deployment.yaml": helmDeploymentTemplate,
 	"build/helm/templates/service.yaml":    helmServiceTemplate,
+	"build/helm/README.md":                 helmReadmeTemplate,
 }
 
 const k8sReadmeTemplate = `= Kubernetes Deployment Guide
@@ -4538,3 +4539,5 @@ spec:
   selector:
     app: {{.ProjectName}}
 `
+
+var helmReadmeTemplate string
