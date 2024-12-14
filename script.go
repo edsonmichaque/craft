@@ -3858,11 +3858,11 @@ spec:
 	//"build/k8s/base/deployment.yml": k8sDeploymentTemplate,
 	"build/ansible/main.yml": ansiblePlaybookTemplate,
 
-	"build/terraform/main.tf":                terraformMainTemplate,
-	"build/terraform/variables.tf":           terraformVariablesTemplate,
-	"build/terraform/outputs.tf":             terraformOutputsTemplate,
-	"deploy/docker-swarm/docker-compose.yml": dockerSwarmTemplate,
-	"deploy/docker-swarm/README.md":          dockerSwarmReadmeTemplate,
+	"build/terraform/main.tf":               terraformMainTemplate,
+	"build/terraform/variables.tf":          terraformVariablesTemplate,
+	"build/terraform/outputs.tf":            terraformOutputsTemplate,
+	"build/docker-swarm/docker-compose.yml": dockerSwarmTemplate,
+	"build/docker-swarm/README.md":          dockerSwarmReadmeTemplate,
 }
 
 const k8sReadmeTemplate = `= Kubernetes Deployment Guide

@@ -2,34 +2,74 @@
 
 ## Overview
 
-This guide provides instructions for deploying craft using Docker Swarm in production, including setting up a CI/CD pipeline with GitHub Actions or GitLab CI.
+This guide provides detailed instructions for installing and configuring Docker Swarm, and deploying craft using Docker Swarm in production. It also includes setting up a CI/CD pipeline with GitHub Actions or GitLab CI.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- Access to a Docker Swarm cluster
-- Docker image available in a registry
+- **Operating System**: Ensure you are using a Linux-based OS (e.g., Ubuntu, CentOS).
+- **Docker and Docker Compose**: Installed on all nodes.
+- **Access to a Docker Swarm cluster**: At least one manager and one worker node.
+- **Docker image available in a registry**: Ensure your application image is built and pushed to a Docker registry.
 
-## Production Deployment
+## Installing Docker
 
-1. **Initialize Docker Swarm** (if not already initialized):
+1. **Update your package index**:
+   ```bash
+   sudo apt-get update
+   ```
+
+2. **Install Docker**:
+   ```bash
+   sudo apt-get install -y docker.io
+   ```
+
+3. **Start Docker and enable it to start at boot**:
+   ```bash
+   sudo systemctl start docker
+   sudo systemctl enable docker
+   ```
+
+4. **Verify Docker installation**:
+   ```bash
+   docker --version
+   ```
+
+## Configuring Docker Swarm
+
+1. **Initialize Docker Swarm** (on the manager node):
    ```bash
    docker swarm init
    ```
 
-2. **Deploy the Stack**:
+   - If you have multiple nodes, note the `docker swarm join` command output. You'll use this to add worker nodes.
+
+2. **Join Worker Nodes**:
+   - Run the `docker swarm join` command on each worker node:
+     ```bash
+     docker swarm join --token <token> <manager-ip>:2377
+     ```
+
+3. **Verify Nodes**:
+   - On the manager node, list all nodes to ensure they are part of the swarm:
+     ```bash
+     docker node ls
+     ```
+
+## Production Deployment
+
+1. **Deploy the Stack**:
    - Use the following command to deploy the stack:
      ```bash
      docker stack deploy -c docker-compose.yml craft
      ```
 
-3. **Monitor the Services**:
+2. **Monitor the Services**:
    - Use the following command to monitor the services:
      ```bash
      docker service ls
      ```
 
-4. **Update the Stack**:
+3. **Update the Stack**:
    - To update the stack with new configurations or images:
      ```bash
      docker stack deploy -c docker-compose.yml craft
