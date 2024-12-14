@@ -1,28 +1,156 @@
 #!/usr/bin/env bash
 # Main build script
-# Entry point for CI build process
+# Entry point for building the project
+# Provides a unified interface for all build-related operations
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/version.sh"
+
+# Print usage information
+usage() {
+    cat << EOF
+Usage: $0 <command> [options]
+
+Commands:
+    build       Build the project binaries
+    docker      Build Docker images
+    package     Create distribution packages
+    proto       Generate protobuf code
+    all         Run all build steps
+    clean       Clean build artifacts
+    help        Show this help message
+
+Options:
+    -v, --verbose     Enable verbose output
+    -d, --debug       Build with debug information
+    -r, --release     Build for release
+    -p, --platform    Specify build platform (e.g., linux/amd64)
+    -o, --output      Specify output directory
+    --version         Show version information
+
+Examples:
+    $0 build --debug
+    $0 docker --platform linux/amd64,linux/arm64
+    $0 package --release
+EOF
+    exit 1
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose)
+                export LOG_LEVEL=DEBUG
+                shift
+                ;;
+            -d|--debug)
+                export DEBUG=true
+                shift
+                ;;
+            -r|--release)
+                export RELEASE=true
+                shift
+                ;;
+            -p|--platform)
+                export BUILD_PLATFORM="$2"
+                shift 2
+                ;;
+            -o|--output)
+                export OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            --version)
+                echo "Version: $(get_build_version)"
+                exit 0
+                ;;
+            -h|--help)
+                usage
+                ;;
+            *)
+                COMMAND="$1"
+                shift
+                ARGS=("$@")
+                break
+                ;;
+        esac
+    done
+}
+
+# Run all build steps
+build_all() {
+    local steps=(
+        "proto"
+        "build"
+        "docker"
+        "package"
+    )
+
+    for step in "${steps[@]}"; do
+        log_info "Running build step: $step"
+        if ! run_build_step "$step"; then
+            log_error "Build step '$step' failed"
+            return 1
+        fi
+    done
+}
+
+# Run a single build step
+run_build_step() {
+    local step=$1
+    local script="${PROJECT_ROOT}/scripts/ci/tasks/${step}.sh"
+
+    if [[ ! -f "$script" ]]; then
+        log_error "Build script not found: $script"
+        return 1
+    fi
+
+    if [[ -n "${DEBUG:-}" ]]; then
+        log_debug "Running build step '$step' with args: ${ARGS[*]:-}"
+    fi
+
+    "$script" "${ARGS[@]:-}"
+}
+
+# Clean build artifacts
+clean_build() {
+    log_info "Cleaning build artifacts"
+    "${PROJECT_ROOT}/scripts/ci/utils/cleanup.sh" --build
+}
 
 main() {
-    log_info "Starting build pipeline"
-    
-    # Run dependency checks
-    "${PROJECT_ROOT}/scripts/ci/tasks/deps.sh"
-    
-    # Run linters
-    "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh"
-    
-    # Run tests
-    "${PROJECT_ROOT}/scripts/ci/tasks/test.sh"
-    
-    # Build binaries
-    "${PROJECT_ROOT}/scripts/ci/tasks/build.sh"
-    
-    # Build Docker images
-    "${PROJECT_ROOT}/scripts/ci/tasks/docker.sh"
-    
-    log_info "Build pipeline completed successfully!"
+    # Ensure we're in the project root
+    cd "${PROJECT_ROOT}" || exit 1
+
+    # Parse command line arguments
+    parse_args "$@"
+
+    # Set default command if none provided
+    COMMAND=${COMMAND:-build}
+
+    # Handle commands
+    case "$COMMAND" in
+        build|docker|package|proto)
+            run_build_step "$COMMAND"
+            ;;
+        all)
+            build_all
+            ;;
+        clean)
+            clean_build
+            ;;
+        help)
+            usage
+            ;;
+        *)
+            log_error "Unknown command: $COMMAND"
+            usage
+            ;;
+    esac
 }
+
+# Ensure proper error handling
+set -euo pipefail
+trap 'log_error "Error occurred in build script"' ERR
 
 main "$@"

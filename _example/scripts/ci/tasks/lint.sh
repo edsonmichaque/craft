@@ -1,33 +1,48 @@
 #!/usr/bin/env bash
 # Lint task script
-# Runs all linters and code quality checks
+# Runs linters and code quality checks
 
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-run_linters() {
-    log_info "Running golangci-lint"
-    golangci-lint run ./...
+main() {
+    # Install golangci-lint if not present
+    ensure_golangci_lint
     
-    log_info "Running go vet"
+    log_info "Running linters..."
+    
+    # Run golangci-lint
+    golangci-lint run \
+        --timeout=5m \
+        --config="${PROJECT_ROOT}/.golangci.yml" \
+        ./...
+    
+    # Run go fmt
+    check_formatting
+    
+    # Run go vet
     go vet ./...
     
-    log_info "Checking go fmt"
-    if [ -n "$(gofmt -l .)" ]; then
-        log_error "Code is not formatted. Please run 'go fmt ./...'"
-        return 1
+    log_info "Linting complete!"
+}
+
+ensure_golangci_lint() {
+    if ! command -v golangci-lint >/dev/null 2>&1; then
+        log_info "Installing golangci-lint..."
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     fi
 }
 
-main() {
-    log_info "Starting code quality checks"
+check_formatting() {
+    log_info "Checking code formatting..."
     
-    # Verify required tools
-    ensure_command "golangci-lint"
-    ensure_command "go"
+    local files
+    files=$(gofmt -l .)
     
-    run_linters
-    
-    log_info "Code quality checks passed!"
+    if [[ -n "$files" ]]; then
+        log_error "The following files are not properly formatted:"
+        echo "$files"
+        exit 1
+    fi
 }
 
 main "$@"

@@ -1,31 +1,51 @@
 #!/usr/bin/env bash
-# Health check utility
-# Verifies service health
+# Health check script
+# Verifies the application is running correctly
 
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-check_service() {
-    local host=${1:-localhost}
-    local port=${2:-8080}
-    local endpoint=${3:-/health}
-    local timeout=${4:-5}
+check_process() {
+    local binary=$1
+    local pid_file="/var/run/${binary}.pid"
+
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            log_info "Process is running (PID: $pid)"
+            return 0
+        fi
+    fi
+
+    log_error "Process is not running"
+        return 1
+}
+
+check_http_endpoint() {
+    local url=$1
+    local expected_status=${2:-200}
     
-    curl --silent --fail \
-        --max-time "$timeout" \
-        "http://${host}:${port}${endpoint}"
+    local response
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+    
+    if [[ "$response" == "$expected_status" ]]; then
+        log_info "HTTP endpoint is healthy"
+        return 0
+    fi
+    
+    log_error "HTTP endpoint returned status $response (expected $expected_status)"
+        return 1
 }
 
 main() {
-    log_info "Running health checks"
+    local binary="craft"
+    local health_url="http://localhost:8080/health"
     
-    for binary in "craftd" "craftctl" ; do
-        if ! check_service "localhost" "8080" "/health"; then
-            log_error "Service ${binary} is not healthy"
-            exit 1
-        fi
-    done
+    # Check process
+    check_process "$binary"
     
-    log_info "All services are healthy!"
+    # Check HTTP endpoint
+    check_http_endpoint "$health_url"
 }
 
 main "$@"

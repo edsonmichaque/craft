@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Common library for CI scripts
+# Common library for scripts
 # Provides core functionality used across all scripts
 
 set -euo pipefail
@@ -18,9 +18,7 @@ export CI_COMMIT_SHA="${CI_COMMIT_SHA:-$(git rev-parse HEAD)}"
 export CI_COMMIT_SHORT_SHA="${CI_COMMIT_SHORT_SHA:-$(git rev-parse --short HEAD)}"
 export CI_COMMIT_BRANCH="${CI_COMMIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 export CI_COMMIT_TAG="${CI_COMMIT_TAG:-$(git describe --tags --exact-match 2>/dev/null || echo '')}"
-export CI_PIPELINE_ID="${CI_PIPELINE_ID:-local-$$}"
 export CI_PROJECT_NAME="craft"
-export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-craft}"
 
 # Environment detection
 is_ci() {
@@ -73,9 +71,15 @@ ensure_command() {
 # Configuration management
 load_env() {
     local env=${1:-development}
-    local env_file="${PROJECT_ROOT}/scripts/ci/env/${env}.env"
+    local env_file="${PROJECT_ROOT}/scripts/env/${env}.env"
+    local local_env_file="${PROJECT_ROOT}/.env"
     
-    if [[ -f "$env_file" ]]; then
+    if [[ -f "$local_env_file" ]]; then
+        log_info "Loading local environment from $local_env_file"
+        set -o allexport
+        source "$local_env_file"
+        set +o allexport
+    elif [[ -f "$env_file" ]]; then
         log_info "Loading environment from $env_file"
         set -o allexport
         source "$env_file"
@@ -89,7 +93,6 @@ load_env() {
 cleanup() {
     local exit_code=$?
     log_info "Cleaning up..."
-    # Add cleanup tasks here
     exit "$exit_code"
 }
 trap cleanup EXIT

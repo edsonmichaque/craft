@@ -1,0 +1,85 @@
+# Rakefile
+require 'rake'
+
+CI_SCRIPTS = './scripts/ci'
+
+# Default task
+task default: %w[test build]
+
+# Test tasks
+desc 'Run tests'
+task :test, [:args] do |t, args|
+  sh "#{CI_SCRIPTS}/test #{args[:args]}"
+end
+
+desc 'Run tests in watch mode'
+task :test_watch do
+  sh "#{CI_SCRIPTS}/test --watch"
+end
+
+desc 'Run tests with coverage'
+task :test_coverage do
+  sh "#{CI_SCRIPTS}/test coverage"
+end
+
+# Build tasks
+desc 'Build project'
+task :build, [:args] do |t, args|
+  sh "#{CI_SCRIPTS}/build #{args[:args]}"
+end
+
+desc 'Build Docker images'
+task :docker do
+  sh "#{CI_SCRIPTS}/build docker"
+end
+
+# CI tasks
+desc 'Run CI pipeline'
+task :ci do
+  sh "#{CI_SCRIPTS}/ci"
+end
+
+desc 'Test CI configurations'
+task :ci_test do
+  sh "#{CI_SCRIPTS}/utils/ci-tester.sh"
+end
+
+namespace :ci do
+  desc 'Test GitHub Actions'
+  task :test_github do
+    sh "#{CI_SCRIPTS}/utils/ci-tester.sh github"
+  end
+
+  desc 'Test GitLab CI'
+  task :test_gitlab do
+    sh "#{CI_SCRIPTS}/utils/ci-tester.sh gitlab"
+  end
+end
+
+# Database tasks
+namespace :db do
+  desc 'Start database'
+  task :start do
+    sh "#{CI_SCRIPTS}/utils/db.sh start"
+  end
+
+  desc 'Run migrations'
+  task :migrate do
+    sh "#{CI_SCRIPTS}/utils/db.sh migrate"
+  end
+
+  desc 'Seed database'
+  task :seed do
+    sh "#{CI_SCRIPTS}/utils/db.sh seed"
+  end
+
+  desc 'Reset database'
+  task reset: [:start, :migrate, :seed]
+end
+
+# Release tasks
+desc 'Create release'
+task :release, [:type] do |t, args|
+  type_arg = args[:type] ? "--#{args[:type]}" : ""
+  sh "#{CI_SCRIPTS}/tasks/release.sh #{type_arg}"
+end

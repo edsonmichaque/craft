@@ -1,34 +1,55 @@
 #!/usr/bin/env bash
 # Test task script
-# Runs all project tests
+# Runs tests and generates coverage reports
 
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-run_tests() {
+main() {
     local coverage_dir="${PROJECT_ROOT}/coverage"
     mkdir -p "$coverage_dir"
+
+    # Run tests with coverage
+    run_tests "$coverage_dir"
     
-    log_info "Running tests with coverage"
-    go test -race -coverprofile="${coverage_dir}/coverage.out" -covermode=atomic ./...
+    # Check coverage threshold
+    check_coverage_threshold "$coverage_dir/coverage.out"
     
-    if command -v go-junit-report >/dev/null 2>&1; then
-        go test -v ./... 2>&1 | go-junit-report > "${coverage_dir}/report.xml"
-    fi
+    # Generate coverage report
+    generate_coverage_report "$coverage_dir"
+}
+
+run_tests() {
+    local coverage_dir=$1
     
-    if command -v gocov >/dev/null 2>&1; then
-        gocov convert "${coverage_dir}/coverage.out" | gocov-html > "${coverage_dir}/coverage.html"
+    log_info "Running tests..."
+    
+    go test \
+        -race \
+        -coverprofile="$coverage_dir/coverage.out" \
+        -covermode=atomic \
+        ./...
+}
+
+check_coverage_threshold() {
+    local coverage_file=$1
+    local threshold=${COVERAGE_THRESHOLD:-70}
+    
+    local coverage
+    coverage=$(go tool cover -func="$coverage_file" | grep total: | awk '{print $3}' | sed 's/%//')
+    
+    log_info "Total coverage: ${coverage}%"
+    
+    if (( $(echo "$coverage < $threshold" | bc -l) )); then
+        log_error "Coverage ${coverage}% is below threshold ${threshold}%"
+        exit 1
     fi
 }
 
-main() {
-    log_info "Starting test suite"
+generate_coverage_report() {
+    local coverage_dir=$1
     
-    # Verify required tools
-    ensure_command "go"
-    
-    run_tests
-    
-    log_info "Tests completed successfully!"
+    log_info "Generating coverage report..."
+    go tool cover -html="$coverage_dir/coverage.out" -o "$coverage_dir/coverage.html"
 }
 
 main "$@"

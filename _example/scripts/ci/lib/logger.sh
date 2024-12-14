@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Logger library for CI scripts
+# Logger library for scripts
 # Provides standardized logging functionality
 
 # Colors

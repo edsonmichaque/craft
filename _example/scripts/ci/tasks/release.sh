@@ -1,46 +1,38 @@
 #!/usr/bin/env bash
 # Release task script
-# Handles versioning and release process
+# Handles version bumping and release creation
 
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
-
-create_release() {
-    local version=$1
-    local branch=${2:-main}
-    
-    log_info "Creating release ${version} from branch ${branch}"
-    
-    # Ensure we're on the correct branch
-    git checkout "$branch"
-    git pull origin "$branch"
-    
-    # Tag the release
-    tag_version "$version"
-    
-    # Build and package
-    "${PROJECT_ROOT}/scripts/ci/tasks/build.sh"
-    
-    # Create GitHub release if gh CLI is available
-    if command -v gh >/dev/null 2>&1; then
-        gh release create "$version" \
-            --title "Release ${version}" \
-            --notes "$(get_changelog)" \
-            ./dist/*
-    fi
-}
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/git.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/version.sh"
 
 main() {
-    local version=${1:-}
-    local branch=${2:-main}
+    local bump_type=${1:-patch}
+    local next_version
     
-    if [[ -z "$version" ]]; then
-        log_error "Version parameter is required"
+    # Ensure working directory is clean
+    if ! is_working_directory_clean; then
+        log_error "Working directory is not clean"
         exit 1
-    fi
+    }
     
-    create_release "$version" "$branch"
+    # Get next version
+    next_version=$(get_next_version "$bump_type")
     
-    log_info "Release ${version} created successfully!"
+    # Validate version format
+    if ! validate_version "$next_version"; then
+        exit 1
+    }
+    
+    # Generate changelog
+    local changelog
+    changelog=$(get_changelog)
+    
+    # Create and push tag
+    create_tag "$next_version" "Release ${next_version}\n\n${changelog}"
+    
+    log_info "Release ${next_version} created successfully!"
+    log_info "Changelog:\n${changelog}"
 }
 
 main "$@"

@@ -1,0 +1,1107 @@
+= CI Scripts Documentation
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== Overview
+
+This directory contains a collection of CI scripts designed to automate common development tasks. The scripts are organized in a modular structure for better maintainability and reuse.
+
+== Directory Structure
+
+[source]
+----
+scripts/ci/
+├── lib/         # Shared library functions
+├── tasks/       # Individual task scripts
+├── utils/       # Utility scripts
+├── hooks/       # Git hooks
+├── env/         # Environment configurations
+├── build        # Main build script
+├── test         # Main test script
+└── ci           # Main CI pipeline script
+----
+
+== Quick Start
+
+=== Basic Usage
+
+[source,bash]
+----
+# Build the project
+./scripts/ci/build
+
+# Run tests
+./scripts/ci/test
+
+# Run the full CI pipeline
+./scripts/ci/ci
+----
+
+=== Common Tasks
+
+[cols="1,2"]
+|===
+|Command |Description
+
+|'./scripts/ci/build build'
+|Builds the project binaries
+
+|'./scripts/ci/build docker'
+|Builds Docker images
+
+|'./scripts/ci/build package'
+|Creates distribution packages
+
+|'./scripts/ci/test test'
+|Runs the test suite
+
+|'./scripts/ci/test lint'
+|Runs linters and code quality checks
+
+|'./scripts/ci/test coverage'
+|Runs tests with coverage reporting
+|===
+
+== Library Functions
+
+The 'lib/' directory contains shared functions used across multiple scripts:
+
+* 'common.sh' - Core functionality and utilities
+* 'logger.sh' - Logging functions
+* 'docker.sh' - Docker-related functions
+* 'git.sh' - Git operations
+* 'version.sh' - Version management
+
+=== Example: Using Library Functions
+
+[source,bash]
+----
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/logger.sh"
+
+log_info "Starting task..."
+retry 3 5 some_command
+log_success "Task completed!"
+----
+
+== Adding New Tasks
+
+=== Task Script Template
+
+Create a new script in 'tasks/' using this template:
+
+[source,bash]
+----
+#!/usr/bin/env bash
+# Description of what this task does
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+main() {
+    log_info "Starting task..."
+    
+    # Your task logic here
+    
+    log_info "Task completed!"
+}
+
+main "$@"
+----
+
+=== Integration Steps
+
+1. Create your task script in 'tasks/' (e.g., 'tasks/mytask.sh')
+2. Make it executable: 'chmod +x tasks/mytask.sh'
+3. Add it to the appropriate main script ('build', 'test', or 'ci')
+
+Example integration in 'build':
+
+[source,bash]
+----
+case "$cmd" in
+    # ... existing commands ...
+    mytask)
+        "${PROJECT_ROOT}/scripts/ci/tasks/mytask.sh" "$@"
+        ;;
+esac
+----
+
+== Best Practices
+
+=== Script Writing Guidelines
+
+* Always source 'common.sh' at the beginning
+* Use logging functions for output
+* Handle errors appropriately
+* Include usage information
+* Add comments for complex logic
+
+=== Error Handling
+
+[source,bash]
+----
+# Set error handling
+set -euo pipefail
+IFS=$'\n\t'
+
+# Use error trapping
+trap 'error_handler $?' ERR
+
+# Handle errors in functions
+if ! some_command; then
+    log_error "Command failed"
+    return 1
+fi
+----
+
+=== Logging
+
+[source,bash]
+----
+log_debug "Debug information"
+log_info "General information"
+log_warn "Warning message"
+log_error "Error message"
+log_fatal "Fatal error, script will exit"
+----
+
+== Environment Configuration
+
+=== Available Variables
+
+[cols="1,2"]
+|===
+|Variable |Description
+
+|'PROJECT_ROOT'
+|Root directory of the project
+
+|'CI_COMMIT_SHA'
+|Current commit SHA
+
+|'CI_COMMIT_BRANCH'
+|Current branch name
+
+|'CI_COMMIT_TAG'
+|Current tag (if any)
+
+|'LOG_LEVEL'
+|Logging level (DEBUG, INFO, WARN, ERROR)
+|===
+
+=== Environment Files
+
+Place environment files in 'env/':
+
+* 'development.env' - Development settings
+* 'staging.env' - Staging settings
+* 'production.env' - Production settings
+
+== Contributing
+
+=== Adding New Features
+
+1. Create a new branch
+2. Add your scripts or modifications
+3. Update documentation
+4. Submit a pull request
+
+=== Testing
+
+* Test your scripts in isolation
+* Verify integration with existing scripts
+* Check error handling
+* Test in both CI and local environments
+
+== Troubleshooting
+
+=== Common Issues
+
+[cols="1,2"]
+|===
+|Issue |Solution
+
+|Script not executable
+|Run 'chmod +x script.sh'
+
+|Library not found
+|Check path to common.sh
+
+|Permission denied
+|Check file permissions and ownership
+|===
+
+=== Debug Mode
+
+Run scripts with debug output:
+
+[source,bash]
+----
+DEBUG=1 ./scripts/ci/build
+----
+
+== CI Integration Guide
+
+=== GitHub Actions
+
+==== Basic Workflow
+
+[source,yaml]
+----
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+          
+      - name: Run CI Pipeline
+        run: |
+          chmod +x ./scripts/ci/ci
+          ./scripts/ci/ci
+        env:
+          CI: true
+          GITHUB_TOKEN: {{ secrets.GITHUB_TOKEN }}
+----
+
+==== Advanced Workflow
+
+[source,yaml]
+----
+name: Advanced CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Tests
+        run: ./scripts/ci/test
+        env:
+          LOG_LEVEL: DEBUG
+          
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Build Project
+        run: ./scripts/ci/build
+        
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        run: |
+          ./scripts/ci/build package
+          ./scripts/ci/tasks/release.sh
+  only:
+    - tags
+----
+
+=== GitLab CI
+
+==== Basic Pipeline
+
+[source,yaml]
+----
+image: golang:1.21
+
+variables:
+  GO111MODULE: "on"
+  CGO_ENABLED: "0"
+
+stages:
+  - test
+  - build
+  - deploy
+
+before_script:
+  - chmod +x ./scripts/ci/ci
+  - source ./scripts/ci/lib/common.sh
+
+test:
+  stage: test
+  script:
+    - ./scripts/ci/test
+
+build:
+  stage: build
+  script:
+    - ./scripts/ci/build
+  artifacts:
+    paths:
+      - bin/
+
+deploy:
+  stage: deploy
+  script:
+    - ./scripts/ci/build package
+  only:
+    - tags
+----
+
+==== Advanced Pipeline
+
+[source,yaml]
+----
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+
+image: golang:1.21
+
+variables:
+  GO111MODULE: "on"
+  CGO_ENABLED: "0"
+  DOCKER_REGISTRY: $CI_REGISTRY
+
+stages:
+  - test
+  - build
+  - package
+  - deploy
+
+.script_template: &script_setup
+  before_script:
+    - chmod +x ./scripts/ci/ci
+    - source ./scripts/ci/lib/common.sh
+    - load_env "$CI_ENVIRONMENT_NAME"
+
+lint:
+  stage: test
+  script:
+    - ./scripts/ci/test lint
+
+test:
+  stage: test
+  script:
+    - ./scripts/ci/test coverage
+  coverage: '/coverage: \d+\.\d+/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/coverage.xml
+
+build:
+  stage: build
+  script:
+    - ./scripts/ci/build
+  artifacts:
+    paths:
+      - bin/
+
+docker:
+  stage: package
+  script:
+    - ./scripts/ci/build docker --push
+  only:
+    - main
+    - tags
+
+release:
+  stage: deploy
+  script:
+    - ./scripts/ci/build package
+    - ./scripts/ci/tasks/release.sh
+  only:
+    - tags
+----
+
+=== Jenkins Pipeline
+
+==== Jenkinsfile (Declarative)
+
+[source,groovy]
+----
+pipeline {
+    agent {
+        docker {
+            image 'golang:1.21'
+        }
+    }
+    
+    environment {
+        GO111MODULE = 'on'
+        CGO_ENABLED = '0'
+    }
+    
+    stages {
+        stage('Setup') {
+            steps {
+                sh 'chmod +x ./scripts/ci/ci'
+                sh 'source ./scripts/ci/lib/common.sh'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh './scripts/ci/test'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                sh './scripts/ci/build'
+            }
+        }
+        
+        stage('Package') {
+            when {
+                tag "v*"
+            }
+            steps {
+                sh './scripts/ci/build package'
+            }
+        }
+    }
+    
+    post {
+        always {
+            junit 'test-results/*.xml'
+            cleanWs()
+        }
+    }
+}
+----
+
+==== Jenkinsfile (Scripted)
+
+[source,groovy]
+----
+node {
+    def app
+    
+    environment {
+        GO111MODULE = 'on'
+        CGO_ENABLED = '0'
+    }
+    
+    try {
+        stage('Checkout') {
+            checkout scm
+            sh 'chmod +x ./scripts/ci/ci'
+            sh 'source ./scripts/ci/lib/common.sh'
+        }
+        
+        stage('Test') {
+            sh './scripts/ci/test coverage'
+            junit 'test-results/*.xml'
+        }
+        
+        stage('Build') {
+            sh './scripts/ci/build'
+            archiveArtifacts artifacts: 'bin/*', fingerprint: true
+        }
+        
+        if (env.TAG_NAME =~ /^v.*/) {
+            stage('Package') {
+                sh './scripts/ci/build package'
+                sh './scripts/ci/tasks/release.sh'
+            }
+        }
+    } catch (e) {
+        currentBuild.result = 'FAILED'
+        throw e
+    } finally {
+        cleanWs()
+    }
+}
+----
+
+=== Gitea Actions
+
+[source,yaml]
+----
+name: CI Pipeline
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Tests
+        run: ./scripts/ci/test
+        
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Project
+        run: ./scripts/ci/build
+----
+
+== Local Testing and Development
+
+=== Setting Up Local Environment
+
+[source,bash]
+----
+# 1. Initialize development environment
+./scripts/ci/setup-dev.sh
+
+# 2. Create local environment file
+cp scripts/ci/env/development.env.example .env
+
+# 3. Install development tools
+./scripts/ci/tasks/dependencies.sh --with-tools
+----
+
+=== Running Tests Locally
+
+==== Unit Tests
+[source,bash]
+----
+# Run all tests
+./scripts/ci/test
+
+# Run specific test suite
+./scripts/ci/test --suite api
+
+# Run tests with coverage
+./scripts/ci/test coverage
+
+# Run tests in watch mode
+LOG_LEVEL=DEBUG ./scripts/ci/test --watch
+
+# Run tests for specific package
+./scripts/ci/test --package "./pkg/database"
+----
+
+==== Integration Tests
+[source,bash]
+----
+# Start test dependencies
+docker-compose -f docker-compose.test.yml up -d
+
+# Run integration tests
+./scripts/ci/test integration
+
+# Cleanup after tests
+docker-compose -f docker-compose.test.yml down
+----
+
+==== Load Tests
+[source,bash]
+----
+# Run load tests
+./scripts/ci/utils/load-test.sh --users 100 --duration 5m
+
+# Run load tests against staging
+ENV=staging ./scripts/ci/utils/load-test.sh
+----
+
+=== Local Build Examples
+
+==== Basic Builds
+[source,bash]
+----
+# Development build
+./scripts/ci/build
+
+# Production build
+BUILD_ENV=production ./scripts/ci/build
+
+# Debug build
+./scripts/ci/build --debug
+
+# Build specific component
+./scripts/ci/build --component api
+----
+
+==== Docker Builds
+[source,bash]
+----
+# Build local image
+./scripts/ci/build docker
+
+# Build with custom tags
+./scripts/ci/build docker --tag custom-tag
+
+# Build multiple architectures
+./scripts/ci/build docker --platforms "linux/amd64,linux/arm64"
+
+# Build with build args
+./scripts/ci/build docker --build-arg VERSION=1.2.3
+----
+
+=== Local Development Workflow
+
+==== Hot Reload
+[source,bash]
+----
+# Start development server with hot reload
+./scripts/ci/utils/dev-server.sh
+
+# Watch specific directories
+./scripts/ci/utils/dev-server.sh --watch "cmd,pkg"
+
+# Run with custom port
+./scripts/ci/utils/dev-server.sh --port 3000
+----
+
+==== Database Management
+[source,bash]
+----
+# Start local database
+./scripts/ci/utils/db.sh start
+
+# Run migrations
+./scripts/ci/utils/db.sh migrate
+
+# Reset database
+./scripts/ci/utils/db.sh reset
+
+# Generate test data
+./scripts/ci/utils/db.sh seed
+----
+
+=== Debugging Scripts
+
+==== Enable Debug Output
+[source,bash]
+----
+# Method 1: Environment variable
+DEBUG=1 ./scripts/ci/build
+
+# Method 2: Set log level
+LOG_LEVEL=DEBUG ./scripts/ci/test
+
+# Method 3: Use debug flag
+./scripts/ci/build --debug
+----
+
+==== Script Debugging
+[source,bash]
+----
+# Add to script for debugging
+set -x  # Enable command tracing
+PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+
+# Run with step-by-step execution
+bash -x ./scripts/ci/build
+
+# Print stack trace on error
+export BASH_XTRACEFD=1
+----
+
+=== Common Development Tasks
+
+==== Code Generation
+[source,bash]
+----
+# Generate all code
+./scripts/ci/tasks/generate.sh
+
+# Generate specific types
+./scripts/ci/tasks/generate.sh --type proto
+
+# Generate with validation
+./scripts/ci/tasks/generate.sh --validate
+----
+
+==== Dependency Management
+[source,bash]
+----
+# Update dependencies
+./scripts/ci/tasks/dependencies.sh update
+
+# Verify dependencies
+./scripts/ci/tasks/dependencies.sh verify
+
+# Clean dependency cache
+./scripts/ci/tasks/dependencies.sh clean
+----
+
+==== Release Process
+[source,bash]
+----
+# Create release candidate
+./scripts/ci/tasks/release.sh --rc
+
+# Create minor release
+./scripts/ci/tasks/release.sh --bump minor
+
+# Create hotfix
+./scripts/ci/tasks/release.sh --hotfix
+
+# Release with custom version
+./scripts/ci/tasks/release.sh --version 1.2.3
+----
+
+=== Troubleshooting Local Development
+
+==== Common Issues and Solutions
+
+[cols="1,2"]
+|===
+|Issue |Solution
+
+|Script not executable
+|Run 'chmod +x script.sh'
+
+|Library not found
+|Check path to common.sh
+
+|Permission denied
+|Check file permissions and ownership
+|===
+
+==== Debug Commands
+
+[source,bash]
+----
+# Check script syntax
+shellcheck ./scripts/ci/build
+
+# Print environment
+./scripts/ci/utils/env-info.sh
+
+# Validate configuration
+./scripts/ci/utils/validate-config.sh
+
+# Check system requirements
+./scripts/ci/utils/check-system.sh
+----
+
+=== Development Tools Integration
+
+==== VS Code
+[source,json]
+----
+{
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "build",
+                "type": "shell",
+                "command": "./scripts/ci/build",
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                }
+            },
+            {
+                "label": "test",
+                "type": "shell",
+                "command": "./scripts/ci/test",
+                "group": {
+                    "kind": "test",
+                    "isDefault": true
+                }
+            }
+        ]
+    }
+}
+----
+
+==== Git Hooks
+[source,bash]
+----
+# Pre-commit hook
+./scripts/ci/hooks/pre-commit.sh
+
+# Pre-push hook
+./scripts/ci/hooks/pre-push.sh
+
+# Install all hooks
+./scripts/ci/utils/install-hooks.sh
+----
+
+== Local CI Testing with Docker
+
+=== Automated CI Detection and Testing
+
+==== Universal CI Tester
+[source,bash]
+----
+#!/usr/bin/env bash
+# scripts/ci/utils/ci-tester.sh
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+detect_ci_configs() {
+    local configs=()
+    
+    # Check for GitHub Actions
+    if [[ -d ".github/workflows" ]]; then
+        mapfile -t github_workflows < <(find .github/workflows -name "*.yml" -o -name "*.yaml")
+        configs+=("${github_workflows[@]}")
+    fi
+    
+    # Check for GitLab CI
+    if [[ -f ".gitlab-ci.yml" ]]; then
+        configs+=(".gitlab-ci.yml")
+    fi
+    
+    # Check for other CI configs (Jenkins, etc.)
+    [[ -f "Jenkinsfile" ]] && configs+=("Jenkinsfile")
+    
+    echo "${configs[@]}"
+}
+
+setup_dind_environment() {
+    local dind_container="ci-dind"
+    
+    # Start Docker-in-Docker container if not running
+    if ! docker ps --filter "name=$dind_container" --format '{{.Names}}' | grep -q "^$dind_container$"; then
+        log_info "Starting Docker-in-Docker container..."
+        docker run --privileged --name "$dind_container" \
+            -d --network ci-network \
+            -e DOCKER_TLS_CERTDIR="" \
+            docker:dind
+        
+        # Wait for Docker daemon to be ready
+        local retries=30
+        while ! docker exec "$dind_container" docker info >/dev/null 2>&1; do
+            retries=$((retries - 1))
+            if [[ $retries -eq 0 ]]; then
+                log_error "Docker-in-Docker failed to start"
+                exit 1
+            fi
+            sleep 1
+        done
+    fi
+    
+    # Export Docker host for child processes
+    export DOCKER_HOST="tcp://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$dind_container"):2375"
+}
+
+test_github_workflow() {
+    local workflow=$1
+    local workflow_name
+    workflow_name=$(basename "$workflow")
+    
+    log_info "Testing GitHub workflow: $workflow_name"
+    
+    # Parse workflow events
+    local events
+    events=$(yq e '.on | keys' "$workflow")
+    
+    for event in $events; do
+        log_info "Testing workflow with event: $event"
+        act -W "$workflow" "$event" \
+            --container-architecture linux/amd64 \
+            --bind \
+            --env-file .env.ci
+    done
+}
+
+test_gitlab_pipeline() {
+    local config=$1
+    log_info "Testing GitLab CI pipeline: $config"
+    
+    # Parse stages from GitLab CI config
+    local stages
+    stages=$(yq e '.stages[]' "$config")
+    
+    for stage in $stages; do
+        local jobs
+        jobs=$(yq e ".[].stage == \"$stage\" | key" "$config")
+        
+        for job in $jobs; do
+            log_info "Testing job: $job"
+            gitlab-runner exec docker \
+                --docker-privileged \
+                --env-file .env.ci \
+                "$job"
+        done
+    done
+}
+
+create_ci_network() {
+    local network_name="ci-network"
+    if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+        docker network create "$network_name"
+    fi
+}
+
+cleanup_ci_environment() {
+    log_info "Cleaning up CI environment..."
+    docker rm -f ci-dind >/dev/null 2>&1 || true
+    docker network rm ci-network >/dev/null 2>&1 || true
+}
+
+main() {
+    local cleanup=${CLEANUP:-true}
+    trap '[[ "$cleanup" == "true" ]] && cleanup_ci_environment' EXIT
+    
+    # Create dedicated network
+    create_ci_network
+    
+    # Setup Docker-in-Docker
+    setup_dind_environment
+    
+    # Auto-detect CI configurations
+    local configs
+    mapfile -t configs < <(detect_ci_configs)
+    
+    if [[ ${#configs[@]} -eq 0 ]]; then
+        log_error "No CI configurations found"
+        exit 1
+    fi
+    
+    # Test each configuration
+    for config in "${configs[@]}"; do
+        case "$config" in
+            .github/workflows/*)
+                test_github_workflow "$config"
+                ;;
+            .gitlab-ci.yml)
+                test_gitlab_pipeline "$config"
+                ;;
+            Jenkinsfile)
+                log_warn "Jenkins pipeline testing not implemented yet"
+                ;;
+            *)
+                log_warn "Unknown CI configuration: $config"
+                ;;
+        esac
+    done
+}
+
+main "$@"
+----
+
+==== Docker Compose for CI Testing
+[source,yaml]
+----
+# docker-compose.ci.yml
+version: '3.8'
+
+services:
+  dind:
+    image: docker:dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    networks:
+      - ci-network
+
+  runner:
+    image: ci-runner:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=tcp://dind:2375
+      - CI=true
+    depends_on:
+      - dind
+    networks:
+      - ci-network
+
+networks:
+  ci-network:
+    driver: bridge
+----
+
+==== Custom Runner Dockerfile
+[source,dockerfile]
+----
+# Dockerfile.runner
+FROM ubuntu:22.04
+
+# Install essential tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    make \
+    docker.io \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CI tools
+RUN curl -sL https://raw.githubusercontent.com/nektos/act/master/install.sh | bash && \
+    curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | bash && \
+    apt-get install gitlab-runner
+
+# Install yq for YAML parsing
+RUN pip3 install yq
+
+WORKDIR /workspace
+
+COPY scripts/ci/utils/ci-tester.sh /usr/local/bin/ci-tester
+RUN chmod +x /usr/local/bin/ci-tester
+
+ENTRYPOINT ["ci-tester"]
+----
+
+=== Usage Examples
+
+==== Basic Usage
+[source,bash]
+----
+# Test all CI configurations
+./scripts/ci/utils/ci-tester.sh
+
+# Test without cleanup
+CLEANUP=false ./scripts/ci/utils/ci-tester.sh
+
+# Test with custom environment
+ENV_FILE=.env.custom ./scripts/ci/utils/ci-tester.sh
+----
+
+==== Using Docker Compose
+[source,bash]
+----
+# Start CI testing environment
+docker-compose -f docker-compose.ci.yml up -d
+
+# Run tests in container
+docker-compose -f docker-compose.ci.yml exec runner ci-tester
+
+# Clean up
+docker-compose -f docker-compose.ci.yml down -v
+----
+
+==== Advanced Usage
+[source,bash]
+----
+# Test specific workflow
+./scripts/ci/utils/ci-tester.sh --workflow .github/workflows/build.yml
+
+# Test specific GitLab CI job
+./scripts/ci/utils/ci-tester.sh --job build
+
+# Test with custom Docker image
+DOCKER_IMAGE=custom/golang:1.21 ./scripts/ci/utils/ci-tester.sh
+
+# Test with debug output
+DEBUG=1 ./scripts/ci/utils/ci-tester.sh
+----

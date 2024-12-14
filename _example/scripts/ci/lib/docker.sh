@@ -10,6 +10,7 @@ docker_build() {
     local context=${3:-.}
     local cache_from=""
     local build_args=()
+    local platforms=${DOCKER_PLATFORMS:-"linux/amd64,linux/arm64"}
 
     # Add build arguments
     build_args+=(--build-arg "VERSION=${CI_COMMIT_TAG:-dev}")
@@ -21,10 +22,18 @@ docker_build() {
         cache_from="--cache-from ${CI_REGISTRY_IMAGE}:${CI_COMMIT_BRANCH:-main}"
     fi
 
-    log_info "Building Docker image: $image"
-    docker build \
+    # Ensure buildx is available and create builder if needed
+    if ! docker buildx inspect multiarch >/dev/null 2>&1; then
+        log_info "Creating multiarch builder"
+        docker buildx create --name multiarch --driver docker-container --use
+    fi
+
+    log_info "Building Docker image: $image for platforms: $platforms"
+    docker buildx build \
         "${build_args[@]}" \
         $cache_from \
+        --platform "$platforms" \
+        --push="${DOCKER_PUSH:-false}" \
         -t "$image" \
         -f "$dockerfile" \
         "$context"
@@ -56,16 +65,48 @@ docker_push() {
     fi
 }
 
-# Clean up old images and containers
+# Clean up Docker resources with configurable options
 docker_cleanup() {
-    log_info "Cleaning up Docker resources"
+    local all=${1:-false}
+    local age=${2:-"24h"}
+    
+    log_info "Cleaning up Docker resources (age: $age)"
     
     # Remove stopped containers
-    docker container prune -f
+    log_debug "Removing stopped containers..."
+    docker container prune -f --filter "until=$age"
     
     # Remove unused images
-    docker image prune -f
+    log_debug "Removing unused images..."
+    if [[ "$all" == "true" ]]; then
+        docker image prune -af --filter "until=$age"
+    else
+        docker image prune -f --filter "until=$age"
+    fi
     
     # Remove unused volumes
+    log_debug "Removing unused volumes..."
     docker volume prune -f
+    
+    # Remove unused networks
+    log_debug "Removing unused networks..."
+    docker network prune -f --filter "until=$age"
+    
+    # Remove build cache
+    if [[ "$all" == "true" ]]; then
+        log_debug "Removing build cache..."
+        docker builder prune -af --filter "until=$age"
+    fi
+    
+    # Optional: Remove all dangling resources
+    if [[ "$all" == "true" ]]; then
+        log_debug "Removing dangling resources..."
+        docker system prune -f --filter "until=$age"
+    fi
+    
+    # Report disk space reclaimed
+    if is_debug; then
+        log_debug "Docker disk usage after cleanup:"
+        docker system df
+    fi
 }
