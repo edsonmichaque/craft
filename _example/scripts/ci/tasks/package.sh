@@ -11,7 +11,7 @@ PACKAGE_RELEASE="1"
 PACKAGE_ARCH="amd64"
 PACKAGE_DESCRIPTION="craft - craft"
 PACKAGE_MAINTAINER="Edson Michaque"
-PACKAGE_LICENSE="mit"
+PACKAGE_LICENSE="apache2"
 
 # Directory structure
 BUILD_DIR="${PROJECT_ROOT}/build"

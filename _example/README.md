@@ -62,4 +62,4 @@ The project structure follows the standard Go project layout:
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the APACHE2 License - see the LICENSE file for details.

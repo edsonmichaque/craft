@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	{{block "framework_imports" .}}{{end}}
+	{{template "framework_imports" .}}
 )
 
 {{template "app_context" .}}
@@ -105,9 +106,9 @@ var frameworkTemplates = map[CLIFramework]map[string]struct {
 		"root.go": {
 			Base: baseRootCommand,
 			Template: template.Must(template.New("root").Parse(`
-				{{define "framework_imports"}}
-				"github.com/spf13/cobra"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/spf13/cobra"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdRoot(ctx context.Context, appCtx *AppContext) *cobra.Command {
@@ -139,10 +140,10 @@ func Execute(ctx context.Context, appCtx *AppContext) error {
 		"version.go": {
 			Base: baseVersionCommand,
 			Template: template.Must(template.New("version").Parse(`
-				{{define "framework_imports"}}
-				"github.com/spf13/cobra"
-				"{{.ModulePrefix}}/pkg/version"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/spf13/cobra"
+"{{.ModulePrefix}}/pkg/version"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdVersion(ctx context.Context, appCtx *AppContext) *cobra.Command {
@@ -162,9 +163,9 @@ func CmdVersion(ctx context.Context, appCtx *AppContext) *cobra.Command {
 		"server.go": {
 			Base: baseServerCommand,
 			Template: template.Must(template.New("server").Parse(`
-				{{define "framework_imports"}}
-				"github.com/spf13/cobra"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/spf13/cobra"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdServer(ctx context.Context, appCtx *AppContext) *cobra.Command {
@@ -196,9 +197,9 @@ func CmdServer(ctx context.Context, appCtx *AppContext) *cobra.Command {
 		"root.go": {
 			Base: baseRootCommand,
 			Template: template.Must(template.New("root").Parse(`
-				{{define "framework_imports"}}
-				"github.com/urfave/cli/v2"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/urfave/cli/v2"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdRoot(ctx context.Context, appCtx *AppContext) *cli.App {
@@ -237,10 +238,10 @@ func Execute(ctx context.Context, appCtx *AppContext) error {
 		"version.go": {
 			Base: baseVersionCommand,
 			Template: template.Must(template.New("version").Parse(`
-				{{define "framework_imports"}}
-				"github.com/urfave/cli/v2"
-				"{{.ModulePrefix}}/pkg/version"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/urfave/cli/v2"
+"{{.ModulePrefix}}/pkg/version"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdVersion(ctx context.Context, appCtx *AppContext) *cli.Command {
@@ -260,9 +261,9 @@ func CmdVersion(ctx context.Context, appCtx *AppContext) *cli.Command {
 		"server.go": {
 			Base: baseServerCommand,
 			Template: template.Must(template.New("server").Parse(`
-				{{define "framework_imports"}}
-				"github.com/urfave/cli/v2"
-				{{end}}
+{{define "framework_imports"}}
+"github.com/urfave/cli/v2"
+{{end}}
 			`)),
 			FrameworkBody: `{{define "framework_specific"}}
 func CmdServer(ctx context.Context, appCtx *AppContext) *cli.Command {
@@ -302,12 +303,20 @@ func CmdServer(ctx context.Context, appCtx *AppContext) *cli.Command {
 }
 
 func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string, framework CLIFramework) error {
+	if framework == "" {
+		framework = "cobra"
+	}
+
+	log.Println("Generating command files for", binary, "with framework", framework)
+
 	packageName := strings.Replace(binary, "-", "", -1)
+
 	fullCmdDir := filepath.Join(projectPath, cmdDir)
 	if len(cfg.Binaries) > 1 {
 		fullCmdDir = filepath.Join(fullCmdDir, binary)
 	}
 
+	log.Println("Creating commands directory", fullCmdDir)
 	if err := os.MkdirAll(fullCmdDir, 0755); err != nil {
 		return fmt.Errorf("failed to create commands directory: %w", err)
 	}
@@ -316,6 +325,8 @@ func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string,
 	if !ok {
 		return fmt.Errorf("unsupported CLI framework: %s", framework)
 	}
+
+	log.Println("Generating main.go")
 
 	data := struct {
 		Binary       string
@@ -348,9 +359,23 @@ func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string,
 		return fmt.Errorf("failed to generate main.go: %w", err)
 	}
 
+	if len(cfg.Binaries) > 1 {
+		path := filepath.Join(projectPath, "internal", "commands", binary)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("failed to create commands directory: %w", err)
+		}
+	} else {
+		path := filepath.Join(projectPath, "internal", "commands")
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("failed to create commands directory: %w", err)
+		}
+	}
+
 	// Generate command files
 	for filename, tmpl := range frameworkTmpls {
-		t := template.Must(template.New(filename).Parse(baseCommandTemplate))
+		log.Println("Generating", filename)
+
+		t := template.Must(template.New("base").Parse(baseCommandTemplate))
 		t = template.Must(t.Parse(tmpl.Base))
 		t = template.Must(t.Parse(tmpl.FrameworkBody))
 		if tmpl.Template != nil {
@@ -364,9 +389,31 @@ func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string,
 			return fmt.Errorf("failed to create commands directory: %w", err)
 		}
 
+		var path string
+		if len(cfg.Binaries) > 1 {
+			path = filepath.Join(projectPath, "internal", "commands", binary)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				if err := os.MkdirAll(path, 0755); err != nil {
+					return fmt.Errorf("failed to create commands directory: %w", err)
+				}
+			}
+		} else {
+			path = filepath.Join(projectPath, "internal", "commands")
+		}
+
+		fullPath := filepath.Join(path, filename)
+
+		log.Println("Creating file", fullPath)
+
 		// Generate the command file from the template
-		if err := generateFileFromTemplate2(filepath.Join(fullCmdDir, filename), t, data); err != nil {
-			return fmt.Errorf("failed to generate %s: %w", filename, err)
+		f, err := os.Create(fullPath)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", filename, err)
+		}
+		defer f.Close()
+
+		if err := t.ExecuteTemplate(f, "base", data); err != nil {
+			return fmt.Errorf("failed to execute template for %s: %w", filename, err)
 		}
 	}
 

@@ -760,6 +760,7 @@ This project is licensed under the {{.License}} License - see the LICENSE file f
 		GoVersion    string
 		ModulePrefix string
 		License      string
+		Framework    string
 	}{
 		ProjectName:  cfg.ProjectName,
 		Binaries:     binariesStr,
@@ -839,6 +840,12 @@ func generateCommonFiles(projectPath string, cfg Config) error {
 		}
 		if err := os.WriteFile(filepath, []byte(file.template), file.mode); err != nil {
 			return fmt.Errorf("failed to write %s: %w", filename, err)
+		}
+	}
+
+	for _, binary := range cfg.Binaries {
+		if err := generateCommandFiles(projectPath, binary, cfg, "cmd", CLIFramework(cfg.CLIFramework)); err != nil {
+			return fmt.Errorf("failed to generate command files: %w", err)
 		}
 	}
 
