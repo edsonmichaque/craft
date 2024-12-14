@@ -3858,9 +3858,11 @@ spec:
 	//"build/k8s/base/deployment.yml": k8sDeploymentTemplate,
 	"build/ansible/main.yml": ansiblePlaybookTemplate,
 
-	"build/terraform/main.tf":      terraformMainTemplate,
-	"build/terraform/variables.tf": terraformVariablesTemplate,
-	"build/terraform/outputs.tf":   terraformOutputsTemplate,
+	"build/terraform/main.tf":                terraformMainTemplate,
+	"build/terraform/variables.tf":           terraformVariablesTemplate,
+	"build/terraform/outputs.tf":             terraformOutputsTemplate,
+	"deploy/docker-swarm/docker-compose.yml": dockerSwarmTemplate,
+	"deploy/docker-swarm/README.md":          dockerSwarmReadmeTemplate,
 }
 
 const k8sReadmeTemplate = `= Kubernetes Deployment Guide
@@ -4306,3 +4308,62 @@ ansible-playbook -i inventory site.yml -e "environment=staging"
 |docker.io
 |Docker registry URL
 |===`
+
+// Define the improved Docker Swarm template
+const dockerSwarmTemplate = `version: '3.8'
+
+services:
+  {{.ProjectName}}:
+    image: ${DOCKER_REGISTRY_IMAGE}
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    ports:
+      - "80:80"
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+    secrets:
+      - db_password
+    networks:
+      - webnet
+    volumes:
+      - {{.ProjectName}}_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  webnet:
+
+volumes:
+  {{.ProjectName}}_data:
+
+secrets:
+  db_password:
+    external: true`
+
+// Define the Docker Swarm README template
+//
+//go:embed swarm.md.tmpl
+var dockerSwarmReadmeTemplate string
