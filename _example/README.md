@@ -7,7 +7,6 @@ This project was generated using a Go project generator.
 ## Project Structure
 
 ### Binaries
-- craftd
 - craftctl
 
 ### Features

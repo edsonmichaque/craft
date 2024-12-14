@@ -1,6 +1,6 @@
 
 
-package craftd
+package commands
 
 
 import (
@@ -33,7 +33,7 @@ func runServer(ctx context.Context, host string, port int) error {
 
 func CmdRoot(ctx context.Context, appCtx *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "craftd",
+		Use:   "craftctl",
 		Short: "craft CLI",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging, tracing, etc.

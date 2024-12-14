@@ -1,23 +1,6 @@
 version: '3.8'
 
 services:
-  craftd:
-    build:
-      context: .
-      dockerfile: docker/craftd.Dockerfile
-    volumes:
-      - .:/app
-      - go-mod-cache:/go/pkg/mod
-    env_file:
-      - .env
-    environment:
-      - CRAFT_CONFIG_FILE=/app/config/config.yml
-    ports:
-      - "${PORT:-8080}:8080"
-    depends_on:
-      - postgres
-    networks:
-      - craft-network
   craftctl:
     build:
       context: .

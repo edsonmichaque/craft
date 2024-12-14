@@ -1,6 +1,6 @@
 
 
-package craftd
+package commands
 
 
 import (

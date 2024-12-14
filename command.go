@@ -399,6 +399,11 @@ func generateCommandFiles(projectPath, binary string, cfg Config, cmdDir string,
 			}
 		} else {
 			path = filepath.Join(projectPath, "internal", "commands")
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				if err := os.MkdirAll(path, 0755); err != nil {
+					return fmt.Errorf("failed to create commands directory: %w", err)
+				}
+			}
 		}
 
 		fullPath := filepath.Join(path, filename)

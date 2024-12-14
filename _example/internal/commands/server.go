@@ -1,6 +1,6 @@
 
 
-package craftctl
+package commands
 
 
 import (
