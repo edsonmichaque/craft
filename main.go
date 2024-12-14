@@ -795,6 +795,14 @@ func main() {
 `
 
 func generateFileFromTemplate(filepath, tmplContent string, data interface{}) error {
+	// Check if the filepath contains a '/'
+	if strings.Contains(filepath, "/") {
+		// Create the parent directory if it doesn't exist
+		if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory: %w", err)
+		}
+	}
+
 	tmpl, err := template.New(path.Base(filepath)).Parse(tmplContent)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
