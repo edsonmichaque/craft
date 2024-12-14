@@ -683,6 +683,7 @@ func generateCIScripts(projectPath string, cfg Config) error {
 		// "test":  testMainTemplate,
 		// "ci":    ciMainTemplate,
 
+		"dev": devScriptTemplate,
 	}
 
 	for filename, content := range scripts {
@@ -3863,6 +3864,12 @@ spec:
 	"build/terraform/outputs.tf":            terraformOutputsTemplate,
 	"build/docker-swarm/docker-compose.yml": dockerSwarmTemplate,
 	"build/docker-swarm/README.md":          dockerSwarmReadmeTemplate,
+
+	// Add this to the infraFiles map in generateCIScripts:
+	"build/helm/Chart.yaml":                helmChartTemplate,
+	"build/helm/values.yaml":               helmValuesTemplate,
+	"build/helm/templates/deployment.yaml": helmDeploymentTemplate,
+	"build/helm/templates/service.yaml":    helmServiceTemplate,
 }
 
 const k8sReadmeTemplate = `= Kubernetes Deployment Guide
@@ -4367,3 +4374,167 @@ secrets:
 //
 //go:embed swarm.md.tmpl
 var dockerSwarmReadmeTemplate string
+
+const devScriptTemplate = `#!/usr/bin/env bash
+# Dev environment setup script
+# Allows choosing between Docker, Kubernetes, Docker Swarm, or running the binary directly
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+main() {
+    local choice=${1:-binary}
+
+    case "$choice" in
+        docker)
+            start_docker
+            ;;
+        k8s)
+            start_k8s
+            ;;
+        swarm)
+            start_swarm
+            ;;
+        binary)
+            start_binary
+            ;;
+        *)
+            log_error "Unknown choice: $choice"
+            log_error "Usage: $0 [docker|k8s|swarm|binary]"
+            exit 1
+            ;;
+    esac
+}
+
+start_docker() {
+    log_info "Starting development environment with Docker..."
+    docker-compose up -d
+}
+
+start_k8s() {
+    log_info "Starting development environment with Kubernetes..."
+    kubectl apply -k build/k8s/overlays/dev
+}
+
+start_swarm() {
+    log_info "Starting development environment with Docker Swarm..."
+    docker stack deploy -c build/docker-swarm/docker-compose.yml {{.ProjectName}}
+}
+
+start_binary() {
+    log_info "Starting the binary directly..."
+    ./bin/{{.ProjectName}}
+}
+
+main "$@"
+`
+
+// const mainCITemplate = `#!/usr/bin/env bash
+// # Main CI script
+// # Provides entry points for various CI tasks
+
+// source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+// main() {
+//     local cmd=${1:-help}
+
+//     case "$cmd" in
+//         build)
+//             "$(dirname "${BASH_SOURCE[0]}")/tasks/build.sh" "${@:2}"
+//             ;;
+//         test)
+//             "$(dirname "${BASH_SOURCE[0]}")/tasks/test.sh" "${@:2}"
+//             ;;
+//         lint)
+//             "$(dirname "${BASH_SOURCE[0]}")/tasks/lint.sh" "${@:2}"
+//             ;;
+//         docker)
+//             "$(dirname "${BASH_SOURCE[0]}")/tasks/docker.sh" "${@:2}"
+//             ;;
+//         release)
+//             "$(dirname "${BASH_SOURCE[0]}")/tasks/release.sh" "${@:2}"
+//             ;;
+//         dev)
+//             "$(dirname "${BASH_SOURCE[0]}")/dev.sh" "${@:2}"
+//             ;;
+//         *)
+//             log_error "Unknown command: $cmd"
+//             log_error "Usage: $0 [build|test|lint|docker|release|dev]"
+//             exit 1
+//             ;;
+//     esac
+// }
+
+// main "$@"
+// `
+
+const helmChartTemplate = `apiVersion: v2
+name: {{.ProjectName}}
+description: A Helm chart for {{.ProjectName}}
+version: 0.1.0
+appVersion: "1.0"
+`
+
+const helmValuesTemplate = `replicaCount: 1
+
+image:
+  repository: your-registry/{{.ProjectName}}
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths: []
+  tls: []
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+`
+
+const helmDeploymentTemplate = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.ProjectName}}
+  labels:
+    app: {{.ProjectName}}
+spec:
+  replicas: {{ "{{" }} .Values.replicaCount {{ "}}" }}
+  selector:
+    matchLabels:
+      app: {{.ProjectName}}
+  template:
+    metadata:
+      labels:
+        app: {{.ProjectName}}
+    spec:
+      containers:
+      - name: {{.ProjectName}}
+        image: "{{ "{{" }} .Values.image.repository {{ "}}" }}:{{ "{{" }} .Values.image.tag {{ "}}" }}"
+        ports:
+        - containerPort: 80
+`
+
+const helmServiceTemplate = `apiVersion: v1
+kind: Service
+metadata:
+  name: {{.ProjectName}}
+  labels:
+    app: {{.ProjectName}}
+spec:
+  type: {{ "{{" }} .Values.service.type {{ "}}" }}
+  ports:
+    - port: {{ "{{" }} .Values.service.port {{ "}}" }}
+  selector:
+    app: {{.ProjectName}}
+`
