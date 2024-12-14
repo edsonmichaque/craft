@@ -10,18 +10,6 @@ services:
     networks:
       - craft-network
 
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "3000:3000"
-    networks:
-      - craft-network
-    volumes:
-      - grafana_data:/var/lib/grafana
-
-volumes:
-  grafana_data:
-
 networks:
   craft-network:
     driver: bridge

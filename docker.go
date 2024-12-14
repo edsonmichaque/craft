@@ -675,7 +675,7 @@ networks:
   {{.ProjectName}}-network:
     driver: bridge`
 
-const prometheusGrafanaComposeTemplate = `version: '3.8'
+const prometheusComposeTemplate = `version: '3.8'
 
 services:
   prometheus:
@@ -687,6 +687,13 @@ services:
     networks:
       - {{.ProjectName}}-network
 
+networks:
+  {{.ProjectName}}-network:
+    driver: bridge`
+
+const grafanaComposeTemplate = `version: '3.8'
+
+services:
   grafana:
     image: grafana/grafana
     ports:
@@ -758,6 +765,27 @@ networks:
   {{.ProjectName}}-network:
     driver: bridge`
 
+const jaegerComposeTemplate = `version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "5775:5775/udp"   # UDP port for tchannel
+      - "6831:6831/udp"   # UDP port for receiving traces
+      - "6832:6832/udp"   # UDP port for receiving traces
+      - "5778:5778"       # HTTP port for service admin
+      - "16686:16686"     # HTTP port for web UI
+      - "14268:14268"     # HTTP port for receiving traces
+      - "14250:14250"     # HTTP port for gRPC
+      - "9411:9411"       # HTTP port for Zipkin
+    networks:
+      - {{.ProjectName}}-network
+
+networks:
+  {{.ProjectName}}-network:
+    driver: bridge`
+
 func generateDockerfiles(projectPath string, cfg Config) error {
 	// Create docker directory for dev files
 	dockerDir := filepath.Join(projectPath, "docker")
@@ -783,30 +811,32 @@ func generateDockerfiles(projectPath string, cfg Config) error {
 
 	// Define a map of compose templates including poolers
 	composeTemplates := map[string]string{
-		"docker-compose.yml":                    dockerComposeTemplate,
-		"mysql/docker-compose.yml":              mysqlComposeTemplate,
-		"postgres/docker-compose.yml":           postgresComposeTemplate,
-		"pgbouncer/docker-compose.yml":          pgbouncerComposeTemplate,
-		"proxysql/docker-compose.yml":           proxysqlComposeTemplate,
-		"proxysql/proxysql.cnf":                 proxysqlConfigTemplate,
-		"odyssey/docker-compose.yml":            odysseyComposeTemplate,
-		"odyssey/odyssey.conf":                  odysseyConfigTemplate,
-		"pooler/docker-compose.yml":             poolerComposeTemplate,
-		"mysqlrouter/docker-compose.yml":        mysqlRouterComposeTemplate,
-		"haproxy/docker-compose.yml":            haproxyComposeTemplate,
-		"haproxy/haproxy.cfg":                   haproxyConfigTemplate,
-		"mariadb/docker-compose.yml":            mariadbComposeTemplate,
-		"redis/docker-compose.yml":              redisComposeTemplate,
-		"rabbitmq/docker-compose.yml":           rabbitmqComposeTemplate,
-		"kafka/docker-compose.yml":              kafkaComposeTemplate,
-		"minio/docker-compose.yml":              minioComposeTemplate,
-		"localstack/docker-compose.yml":         localstackComposeTemplate,
-		"valkey/docker-compose.yml":             valkeyComposeTemplate,
-		"redis-sentinel/docker-compose.yml":     redisSentinelComposeTemplate,
-		"prometheus-grafana/docker-compose.yml": prometheusGrafanaComposeTemplate,
-		"statsd/docker-compose.yml":             statsdComposeTemplate,
-		"influxdb/docker-compose.yml":           influxdbComposeTemplate,
-		"pgadmin/docker-compose.yml":            pgadminComposeTemplate,
+		"docker-compose.yml":                dockerComposeTemplate,
+		"mysql/docker-compose.yml":          mysqlComposeTemplate,
+		"postgres/docker-compose.yml":       postgresComposeTemplate,
+		"pgbouncer/docker-compose.yml":      pgbouncerComposeTemplate,
+		"proxysql/docker-compose.yml":       proxysqlComposeTemplate,
+		"proxysql/proxysql.cnf":             proxysqlConfigTemplate,
+		"odyssey/docker-compose.yml":        odysseyComposeTemplate,
+		"odyssey/odyssey.conf":              odysseyConfigTemplate,
+		"pooler/docker-compose.yml":         poolerComposeTemplate,
+		"mysqlrouter/docker-compose.yml":    mysqlRouterComposeTemplate,
+		"haproxy/docker-compose.yml":        haproxyComposeTemplate,
+		"haproxy/haproxy.cfg":               haproxyConfigTemplate,
+		"mariadb/docker-compose.yml":        mariadbComposeTemplate,
+		"redis/docker-compose.yml":          redisComposeTemplate,
+		"rabbitmq/docker-compose.yml":       rabbitmqComposeTemplate,
+		"kafka/docker-compose.yml":          kafkaComposeTemplate,
+		"minio/docker-compose.yml":          minioComposeTemplate,
+		"localstack/docker-compose.yml":     localstackComposeTemplate,
+		"valkey/docker-compose.yml":         valkeyComposeTemplate,
+		"redis-sentinel/docker-compose.yml": redisSentinelComposeTemplate,
+		"prometheus/docker-compose.yml":     prometheusComposeTemplate,
+		"grafana/docker-compose.yml":        grafanaComposeTemplate,
+		"statsd/docker-compose.yml":         statsdComposeTemplate,
+		"influxdb/docker-compose.yml":       influxdbComposeTemplate,
+		"pgadmin/docker-compose.yml":        pgadminComposeTemplate,
+		"jaeger/docker-compose.yml":         jaegerComposeTemplate,
 	}
 
 	// Iterate over the map to generate each compose file
