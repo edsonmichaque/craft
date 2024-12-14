@@ -4540,4 +4540,5 @@ spec:
     app: {{.ProjectName}}
 `
 
+//go:embed helm.md.tmpl
 var helmReadmeTemplate string
