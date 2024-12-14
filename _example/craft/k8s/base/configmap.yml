@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: craft-env
+  namespace: craft
+data:
+  # Application configuration
+  CRAFT_APP_NAME: "craft"
+  CRAFT_CONFIG_FILE: "/etc/craft/config.yml"
+  CRAFT_CONFIG_FORMAT: "yml"
+  CRAFT_CONFIG_DIRS: "/etc/craft,$HOME/.config/craft,"
+  
+  # Runtime configuration
+  GO_VERSION: "1.22"
+  MODULE_PREFIX: "github.com/edsonmichaque/craft"
+  
+  # Feature flags
+  
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: craft-config
+  namespace: craft
+data:
+  config.yml: |
+    app_name: craft
+    module_prefix: github.com/edsonmichaque/craft
+    environment: ${ENV:=production}
+    log_level: ${LOG_LEVEL:=info}
+    
+    server:
+      port: ${PORT:=8080}
+      timeout: ${TIMEOUT:=30s}
+    
+    features:
+      
+    
+    config_dirs:
+      
+      - /etc/craft
+      
+      - $HOME/.config/craft
+      

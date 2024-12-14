@@ -682,6 +682,7 @@ func generateCIScripts(projectPath string, cfg Config) error {
 		// "build": buildMainTemplate,
 		// "test":  testMainTemplate,
 		// "ci":    ciMainTemplate,
+
 	}
 
 	for filename, content := range scripts {
@@ -699,6 +700,13 @@ func generateCIScripts(projectPath string, cfg Config) error {
 		// Make the script executable
 		if err := os.Chmod(filepath, 0755); err != nil {
 			return fmt.Errorf("failed to make %s executable: %w", filename, err)
+		}
+	}
+
+	for k, v := range infraFiles {
+		filepath := path.Join(projectPath, k)
+		if err := generateFileFromTemplate(filepath, v, cfg); err != nil {
+			return fmt.Errorf("failed to generate infra file %s: %w", k, err)
 		}
 	}
 
@@ -1239,7 +1247,7 @@ get_build_version() {
 # Validate version format
 validate_version() {
     local version=$1
-    local version_regex="^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"
+    local version_regex="^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"
     
     if [[ ! $version =~ $version_regex ]]; then
         log_error "Invalid version format: $version"
@@ -2850,17 +2858,17 @@ type DB mg.Namespace
 
 // Start starts the database
 func (DB) Start() error {
-    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "start")
+    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "start"))
 }
 
 // Migrate runs database migrations
 func (DB) Migrate() error {
-    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "migrate")
+    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "migrate"))
 }
 
 // Seed seeds the database
 func (DB) Seed() error {
-    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "seed")
+    return sh.RunV(filepath.Join(ciScripts, "utils", "db.sh"), "seed"))
 }
 `
 
@@ -3443,3 +3451,725 @@ source "${BATS_TEST_DIRNAME}/../../../lib/docker.sh"
     assert_output --partial "Cleaning up Docker resources"
 }
 `
+
+const terraformMainTemplate = `# Main Terraform configuration
+# Typically saved as main.tf
+terraform {
+  required_version = ">= 1.0.0"
+  
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
+    }
+  }
+
+  backend "s3" {
+    bucket = "{{.ProjectName}}-terraform-state"
+    key    = "terraform.tfstate"
+    region = "us-west-2"
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+provider "kubernetes" {
+  config_path = var.k8s_config_path
+}
+
+module "vpc" {
+  source = "./modules/vpc"
+  
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+module "eks" {
+  source = "./modules/eks"
+  
+  project_name = var.project_name
+  environment  = var.environment
+  vpc_id       = module.vpc.vpc_id
+  subnet_ids   = module.vpc.private_subnet_ids
+}
+
+module "rds" {
+  source = "./modules/rds"
+  
+  project_name = var.project_name
+  environment  = var.environment
+  vpc_id       = module.vpc.vpc_id
+  subnet_ids   = module.vpc.database_subnet_ids
+}`
+
+const terraformVariablesTemplate = `# Variables configuration
+# Typically saved as variables.tf
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
+  default     = "{{.ProjectName}}"
+}
+
+variable "environment" {
+  description = "Environment (dev/staging/prod)"
+  type        = string
+}
+
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-west-2"
+}
+
+variable "k8s_config_path" {
+  description = "Path to Kubernetes config file"
+  type        = string
+  default     = "~/.kube/config"
+}`
+
+const terraformOutputsTemplate = `# Outputs configuration
+# Typically saved as outputs.tf
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = module.vpc.vpc_id
+}
+
+output "eks_cluster_name" {
+  description = "Name of the EKS cluster"
+  value       = module.eks.cluster_name
+}
+
+output "rds_endpoint" {
+  description = "Endpoint of the RDS instance"
+  value       = module.rds.endpoint
+}`
+
+const ansiblePlaybookTemplate = `---
+# Main playbook for {{.ProjectName}}
+# Typically saved as site.yml or main.yml
+- name: Deploy {{.ProjectName}}
+  hosts: all
+  become: yes
+  vars_files:
+    - vars/main.yml
+    - vars/{{ "{{" }} environment {{ "}}" }}.yml
+
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - common
+    - docker
+    - { role: database, when: deploy_database | default(true) }
+    - application
+
+  post_tasks:
+    - name: Verify application health
+      uri:
+        url: "http://localhost:8080/health"
+        return_content: yes
+      register: health_check
+      until: health_check.status == 200
+      retries: 12
+      delay: 5`
+
+const ansibleRoleTemplate = `---
+# Role: application
+- name: Create application directory
+  file:
+    path: "{{ "{{" }} app_dir {{ "}}" }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy application files
+  copy:
+    src: "{{ "{{" }} item {{ "}}" }}"
+    dest: "{{ "{{" }} app_dir {{ "}}" }}"
+  with_items:
+    - bin/
+    - config/
+    - docker/
+
+- name: Start application services
+  docker_compose:
+    project_src: "{{ "{{" }} app_dir {{ "}}" }}/docker"
+    state: present
+  register: output
+
+# This template should be created in the 'roles/application/tasks/main.yml' directory
+`
+
+// This template should be created in the 'build/k8s/base/deployment.yml' file
+const k8sDeploymentTemplate = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME:={{.ProjectName}}}
+  namespace: ${NAMESPACE:={{.ProjectName}}}
+  labels:
+    app: ${APP_NAME:={{.ProjectName}}}
+spec:
+  replicas: ${REPLICAS:=3}
+  selector:
+    matchLabels:
+      app: ${APP_NAME:={{.ProjectName}}}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME:={{.ProjectName}}}
+      annotations:
+        checksum/config: ${CONFIG_CHECKSUM}
+    spec:
+      containers:
+      - name: ${APP_NAME:={{.ProjectName}}}
+        image: ${IMAGE_REPOSITORY:={{.ProjectName}}}:${IMAGE_TAG:=latest}
+        imagePullPolicy: ${IMAGE_PULL_POLICY:=IfNotPresent}
+        ports:
+        - containerPort: ${PORT:=8080}
+        envFrom:
+        - configMapRef:
+            name: ${APP_NAME:={{.ProjectName}}}-env
+        - secretRef:
+            name: ${APP_NAME:={{.ProjectName}}}-secrets
+        env:
+        - name: {{.EnvPrefix}}_CONFIG_FILE
+          value: /etc/{{.ProjectName}}/{{.ConfigFile}}
+        - name: {{.EnvPrefix}}_CONFIG_FORMAT
+          value: {{.ConfigFormat}}
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: config
+          mountPath: /etc/{{.ProjectName}}
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: ${HEALTH_PATH:=/health}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${LIVENESS_DELAY:=5}
+          periodSeconds: ${LIVENESS_PERIOD:=10}
+        readinessProbe:
+          httpGet:
+            path: ${READY_PATH:=/ready}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${READINESS_DELAY:=5}
+          periodSeconds: ${READINESS_PERIOD:=10}
+        resources:
+          requests:
+            cpu: ${CPU_REQUEST:=100m}
+            memory: ${MEMORY_REQUEST:=128Mi}
+          limits:
+            cpu: ${CPU_LIMIT:=500m}
+            memory: ${MEMORY_LIMIT:=512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: ${APP_NAME:={{.ProjectName}}}-config
+      - name: tmp
+        emptyDir: {}`
+
+const k8sConfigMapTemplate = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.ProjectName}}-env
+  namespace: {{.ProjectName}}
+data:
+  # Application configuration
+  {{.EnvPrefix}}_APP_NAME: "{{.ProjectName}}"
+  {{.EnvPrefix}}_CONFIG_FILE: "/etc/{{.ProjectName}}/{{.ConfigFile}}"
+  {{.EnvPrefix}}_CONFIG_FORMAT: "{{.ConfigFormat}}"
+  {{.EnvPrefix}}_CONFIG_DIRS: "{{range .ConfigDirs}}{{.}},{{end}}"
+  
+  # Runtime configuration
+  GO_VERSION: "{{.GoVersion}}"
+  MODULE_PREFIX: "{{.ModulePrefix}}"
+  
+  # Feature flags
+  {{range .Includes}}
+  FEATURE_{{. }}_ENABLED: "true"
+  {{end}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.ProjectName}}-config
+  namespace: {{.ProjectName}}
+data:
+  {{.ConfigFile}}: |
+    app_name: {{.ProjectName}}
+    module_prefix: {{.ModulePrefix}}
+    environment: ${ENV:=production}
+    log_level: ${LOG_LEVEL:=info}
+    
+    server:
+      port: ${PORT:=8080}
+      timeout: ${TIMEOUT:=30s}
+    
+    features:
+      {{range .Includes}}
+      {{.}}: true
+      {{end}}
+    
+    config_dirs:
+      {{range .ConfigDirs}}
+      - {{.}}
+      {{end}}`
+
+const k8sSecretTemplate = `apiVersion: v1
+kind: Secret
+metadata:
+  name: {{.ProjectName}}-secrets
+  namespace: {{.ProjectName}}
+type: Opaque
+data:
+  # These values should be provided through environment-specific configuration
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  API_KEY: ${API_KEY}
+  JWT_SECRET: ${JWT_SECRET}`
+
+const k8sKustomizationTemplate = `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: {{.ProjectName}}
+
+commonLabels:
+  app: {{.ProjectName}}
+  environment: ${ENV:=production}
+
+resources:
+- namespace.yml
+- deployment.yml
+- service.yml
+- ingress.yml
+- configmap.yml
+- secret.yml
+
+configMapGenerator:
+- name: {{.ProjectName}}-env
+  behavior: merge
+  envs:
+  - .env.${ENV:=production}
+
+secretGenerator:
+- name: {{.ProjectName}}-secrets
+  behavior: merge
+  envs:
+  - .secrets.${ENV:=production}
+
+patches:
+- path: patches/${ENV:=production}/deployment.yml
+  target:
+    kind: Deployment
+    name: {{.ProjectName}}
+- path: patches/${ENV:=production}/configmap.yml
+  target:
+    kind: ConfigMap
+    name: {{.ProjectName}}-config`
+
+// Add this to the infraFiles map in generateCIScripts:
+var infraFiles = map[string]string{
+
+	"build/k8s/README.adoc":            k8sReadmeTemplate,
+	"build/terraform/README.adoc":      terraformReadmeTemplate,
+	"build/ansible/README.adoc":        ansibleReadmeTemplate,
+	"build/k8s/base/kustomization.yml": k8sKustomizationTemplate,
+	"build/k8s/base/namespace.yml": `apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{.ProjectName}}`,
+	"build/k8s/base/deployment.yml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.ProjectName}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{.ProjectName}}
+  template:
+    metadata:
+      labels:
+        app: {{.ProjectName}}
+    spec:
+      containers:
+      - name: {{.ProjectName}}
+        image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: {{.ProjectName}}-env
+        - secretRef:
+            name: {{.ProjectName}}-secrets`,
+	"build/k8s/base/service.yml": `apiVersion: v1
+kind: Service
+metadata:
+  name: {{.ProjectName}}
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: {{.ProjectName}}`,
+	"build/k8s/base/ingress.yml": `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{.ProjectName}}
+spec:
+  rules:
+  - host: ${DOMAIN}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{.ProjectName}}
+            port:
+              number: 80`,
+	"k8s/base/configmap.yml": k8sConfigMapTemplate,
+	"k8s/base/secret.yml":    k8sSecretTemplate,
+
+	// Environment overlays
+	"build/k8s/overlays/dev/kustomization.yml":     k8sKustomizationTemplate,
+	"build/k8s/overlays/staging/kustomization.yml": k8sKustomizationTemplate,
+	"build/k8s/overlays/prod/kustomization.yml":    k8sKustomizationTemplate,
+
+	"build/ansible/roles/application/tasks/main.yml": ansibleRoleTemplate,
+
+	//"build/k8s/base/deployment.yml": k8sDeploymentTemplate,
+	"build/ansible/main.yml": ansiblePlaybookTemplate,
+
+	"build/terraform/main.tf":      terraformMainTemplate,
+	"build/terraform/variables.tf": terraformVariablesTemplate,
+	"build/terraform/outputs.tf":   terraformOutputsTemplate,
+}
+
+const k8sReadmeTemplate = `= Kubernetes Deployment Guide
+:toc: left
+:source-highlighter: highlight.js
+
+== Overview
+
+This directory contains Kubernetes manifests for deploying {{.ProjectName}} using Kustomize for environment management.
+
+== Directory Structure
+
+[source]
+----
+k8s/
+├── base/                 # Base Kubernetes manifests
+│   ├── deployment.yml
+│   ├── service.yml
+│   ├── configmap.yml
+│   ├── secret.yml
+│   └── kustomization.yml
+└── overlays/            # Environment-specific configurations
+    ├── dev/
+    ├── staging/
+    └── prod/
+----
+
+== Quick Start
+
+=== Prerequisites
+
+* kubectl installed and configured
+* Access to a Kubernetes cluster
+* {{.ProjectName}} Docker image built and available
+
+=== Deployment
+
+1. Set environment variables:
+[source,bash]
+----
+# Required variables
+export APP_NAME={{.ProjectName}}
+export NAMESPACE={{.ProjectName}}
+export IMAGE_REPOSITORY=your-registry/{{.ProjectName}}
+export IMAGE_TAG=latest
+
+# Optional overrides
+export PORT=8080
+export REPLICAS=3
+export ENV=production
+----
+
+2. Deploy to an environment:
+[source,bash]
+----
+# Development
+kubectl apply -k overlays/dev
+
+# Staging
+kubectl apply -k overlays/staging
+
+# Production
+kubectl apply -k overlays/prod
+----
+
+== Configuration
+
+=== Environment Variables
+
+[cols="2,1,2"]
+|===
+|Variable |Default |Description
+
+|APP_NAME
+|{{.ProjectName}}
+|Application name
+
+|NAMESPACE
+|{{.ProjectName}}
+|Kubernetes namespace
+
+|PORT
+|8080
+|Container port
+
+|REPLICAS
+|3
+|Number of replicas
+
+|ENV
+|production
+|Environment name
+|===
+
+=== ConfigMaps and Secrets
+
+* *{{.ProjectName}}-env*: Environment variables
+* *{{.ProjectName}}-config*: Application configuration
+* *{{.ProjectName}}-secrets*: Sensitive data
+
+== Monitoring
+
+=== Health Checks
+
+* Liveness: health
+* Readiness: ready
+
+=== Resource Management
+
+[source,yaml]
+----
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+----`
+
+const terraformReadmeTemplate = `= Terraform Infrastructure Guide
+:toc: left
+:source-highlighter: highlight.js
+
+== Overview
+
+This directory contains Terraform configurations for provisioning {{.ProjectName}}'s infrastructure on AWS.
+
+== Directory Structure
+
+[source]
+----
+terraform/
+├── main.tf           # Main configuration
+├── variables.tf      # Input variables
+├── outputs.tf        # Output values
+└── modules/         
+    ├── vpc/         # VPC configuration
+    ├── eks/         # EKS cluster
+    └── rds/         # Database
+----
+
+== Quick Start
+
+=== Prerequisites
+
+* Terraform >= 1.0.0
+* AWS CLI configured
+* S3 bucket for state storage
+
+=== Usage
+
+1. Initialize Terraform:
+[source,bash]
+----
+terraform init
+----
+
+2. Create a terraform.tfvars file:
+[source,hcl]
+----
+project_name = "{{.ProjectName}}"
+environment  = "production"
+aws_region   = "us-west-2"
+----
+
+3. Plan and apply:
+[source,bash]
+----
+terraform plan -out=tfplan
+terraform apply tfplan
+----
+
+== Modules
+
+=== VPC
+
+Creates a VPC with:
+* Public and private subnets
+* NAT Gateway
+* Internet Gateway
+
+=== EKS
+
+Provisions an EKS cluster with:
+* Managed node groups
+* IAM roles and policies
+* Security groups
+
+=== RDS
+
+Sets up a database with:
+* Multi-AZ deployment
+* Automated backups
+* Security groups
+
+== State Management
+
+State is stored in S3:
+[source,hcl]
+----
+backend "s3" {
+  bucket = "{{.ProjectName}}-terraform-state"
+  key    = "terraform.tfstate"
+  region = "us-west-2"
+}
+----`
+
+const ansibleReadmeTemplate = `= Ansible Deployment Guide
+:toc: left
+:source-highlighter: highlight.js
+
+== Overview
+
+This directory contains Ansible playbooks and roles for deploying {{.ProjectName}}.
+
+== Directory Structure
+
+[source]
+----
+ansible/
+├── site.yml                # Main playbook
+├── roles/
+│   ├── common/            # Common setup
+│   ├── docker/            # Docker installation
+│   ├── database/          # Database setup
+│   └── application/       # Application deployment
+└── vars/
+    ├── main.yml           # Common variables
+    ├── dev.yml            # Development
+    ├── staging.yml        # Staging
+    └── prod.yml           # Production
+----
+
+== Quick Start
+
+=== Prerequisites
+
+* Ansible >= 2.9
+* SSH access to target servers
+* Python installed on targets
+
+=== Usage
+
+1. Create inventory file:
+[source,ini]
+----
+[production]
+app1.example.com
+app2.example.com
+
+[database]
+db1.example.com
+
+[production:vars]
+environment=production
+----
+
+2. Run playbook:
+[source,bash]
+----
+# Deploy to production
+ansible-playbook -i inventory site.yml -e "environment=production"
+
+# Deploy to staging
+ansible-playbook -i inventory site.yml -e "environment=staging"
+----
+
+== Roles
+
+=== Common
+
+* System updates
+* Basic packages
+* Security configuration
+
+=== Docker
+
+* Docker installation
+* Docker Compose setup
+* Registry configuration
+
+=== Database
+
+* Database installation
+* Initial setup
+* Backup configuration
+
+=== Application
+
+* Application deployment
+* Configuration management
+* Service setup
+
+== Variables
+
+[cols="2,1,2"]
+|===
+|Variable |Default |Description
+
+|app_dir
+|/opt/{{.ProjectName}}
+|Application directory
+
+|deploy_database
+|true
+|Whether to deploy database
+
+|docker_registry
+|docker.io
+|Docker registry URL
+|===`

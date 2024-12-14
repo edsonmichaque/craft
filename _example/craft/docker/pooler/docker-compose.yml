@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  pgpool:
+    image: bitnami/pgpool:latest
+    environment:
+      PGPOOL_BACKEND_NODES: 0:postgres:5432
+      PGPOOL_SR_CHECK_USER: craft
+      PGPOOL_SR_CHECK_PASSWORD: craft
+      PGPOOL_ENABLE_LOAD_BALANCING: yes
+      PGPOOL_MAX_POOL: 4
+      PGPOOL_POSTGRES_USERNAME: craft
+      PGPOOL_POSTGRES_PASSWORD: craft
+    ports:
+      - "5433:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - craft-network
+    healthcheck:
+      test: ["CMD", "/opt/bitnami/scripts/pgpool/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  craft-network:
+    external: true

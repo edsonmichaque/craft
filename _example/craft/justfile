@@ -1,0 +1,101 @@
+# justfile
+
+# Default recipe
+default: test build
+
+# Set environment variables
+export PROJECT_ROOT := env_var_or_default("PROJECT_ROOT", justfile_directory())
+export CI_SCRIPTS := PROJECT_ROOT + "/scripts/ci"
+
+# Show available recipes
+help:
+    @just --list
+
+# Test recipes
+test *args:
+    {{CI_SCRIPTS}}/test {{args}}
+
+test-watch *args:
+    {{CI_SCRIPTS}}/test --watch {{args}}
+
+test-coverage *args:
+    {{CI_SCRIPTS}}/test coverage {{args}}
+
+# Build recipes
+build *args:
+    {{CI_SCRIPTS}}/build {{args}}
+
+build-debug *args:
+    DEBUG=1 {{CI_SCRIPTS}}/build {{args}}
+
+docker *args:
+    {{CI_SCRIPTS}}/build docker {{args}}
+
+package *args:
+    {{CI_SCRIPTS}}/build package {{args}}
+
+# CI recipes
+ci *args:
+    {{CI_SCRIPTS}}/ci {{args}}
+
+ci-test *args:
+    {{CI_SCRIPTS}}/utils/ci-tester.sh {{args}}
+
+ci-test-github *args:
+    {{CI_SCRIPTS}}/utils/ci-tester.sh github {{args}}
+
+ci-test-gitlab *args:
+    {{CI_SCRIPTS}}/utils/ci-tester.sh gitlab {{args}}
+
+# Development recipes
+setup-dev:
+    {{CI_SCRIPTS}}/setup-dev.sh
+
+lint *args:
+    {{CI_SCRIPTS}}/test lint {{args}}
+
+generate *args:
+    {{CI_SCRIPTS}}/tasks/generate.sh {{args}}
+
+# Database recipes
+db-start *args:
+    {{CI_SCRIPTS}}/utils/db.sh start {{args}}
+
+db-migrate *args:
+    {{CI_SCRIPTS}}/utils/db.sh migrate {{args}}
+
+db-seed *args:
+    {{CI_SCRIPTS}}/utils/db.sh seed {{args}}
+
+# Release recipes
+release *args:
+    {{CI_SCRIPTS}}/tasks/release.sh {{args}}
+
+release-rc *args:
+    {{CI_SCRIPTS}}/tasks/release.sh --rc {{args}}
+
+release-hotfix *args:
+    {{CI_SCRIPTS}}/tasks/release.sh --hotfix {{args}}
+
+# Cleanup recipe
+clean *args:
+    {{CI_SCRIPTS}}/utils/cleanup.sh {{args}}
+
+# Composite recipes
+full-test: lint test test-coverage
+
+full-build: generate build docker package
+
+full-release: full-test full-build release
+
+# Development workflow recipes
+dev: setup-dev
+    {{CI_SCRIPTS}}/utils/dev-server.sh
+
+# CI testing workflow
+test-all-ci: ci-test-github ci-test-gitlab
+    @echo "All CI configurations tested successfully"
+
+# Database workflow
+db-reset: db-start db-migrate db-seed
+    @echo "Database reset complete"

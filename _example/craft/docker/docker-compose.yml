@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  craftd:
+    build:
+      context: .
+      dockerfile: docker/craftd.Dockerfile
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+    env_file:
+      - .env
+    environment:
+      - CRAFT_CONFIG_FILE=/app/config/config.yml
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      - postgres
+    networks:
+      - craft-network
+  craftctl:
+    build:
+      context: .
+      dockerfile: docker/craftctl.Dockerfile
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+    env_file:
+      - .env
+    environment:
+      - CRAFT_CONFIG_FILE=/app/config/config.yml
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      - postgres
+    networks:
+      - craft-network
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: craft
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - craft-network
+
+volumes:
+  postgres_data:
+  go-mod-cache:
+
+networks:
+  craft-network:
+    driver: bridge

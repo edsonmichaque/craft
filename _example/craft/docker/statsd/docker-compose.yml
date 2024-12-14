@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  statsd:
+    image: statsd/statsd
+    ports:
+      - "8125:8125/udp"
+    networks:
+      - craft-network
+
+networks:
+  craft-network:
+    driver: bridge

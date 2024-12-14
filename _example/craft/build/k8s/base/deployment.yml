@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: craft
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: craft
+  template:
+    metadata:
+      labels:
+        app: craft
+    spec:
+      containers:
+      - name: craft
+        image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: craft-env
+        - secretRef:
+            name: craft-secrets
