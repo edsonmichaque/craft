@@ -1009,7 +1009,7 @@ const gitLibTemplate = `#!/usr/bin/env bash
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Version pattern validation
-readonly VERSION_PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+readonly VERSION_PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
 
 # Ensure we're in a git repository
 ensure_git_repo() {
@@ -3845,8 +3845,8 @@ spec:
             name: {{.ProjectName}}
             port:
               number: 80`,
-	"k8s/base/configmap.yml": k8sConfigMapTemplate,
-	"k8s/base/secret.yml":    k8sSecretTemplate,
+	"build/k8s/base/configmap.yml": k8sConfigMapTemplate,
+	"build/k8s/base/secret.yml":    k8sSecretTemplate,
 
 	// Environment overlays
 	"build/k8s/overlays/dev/kustomization.yml":     k8sKustomizationTemplate,
@@ -3924,6 +3924,139 @@ kubectl apply -k overlays/staging
 
 # Production
 kubectl apply -k overlays/prod
+----
+
+== Local Development with Kind or Minikube
+
+=== Prerequisites
+
+* Docker installed
+* Kind or Minikube installed
+
+=== Using Kind
+
+1. Create a Kind cluster:
+[source,bash]
+----
+kind create cluster
+----
+
+2. Build and load the Docker image:
+[source,bash]
+----
+docker build -t your-registry/{{.ProjectName}}:latest .
+kind load docker-image your-registry/{{.ProjectName}}:latest
+----
+
+3. Deploy the application:
+[source,bash]
+----
+kubectl apply -k overlays/dev
+----
+
+4. Access the application:
+[source,bash]
+----
+kubectl port-forward svc/{{.ProjectName}} 8080:80 -n {{.ProjectName}}
+----
+
+=== Using Minikube
+
+1. Start a Minikube cluster:
+[source,bash]
+----
+minikube start
+----
+
+2. Use Minikube's Docker daemon:
+[source,bash]
+----
+eval $(minikube docker-env)
+docker build -t your-registry/{{.ProjectName}}:latest .
+----
+
+3. Deploy the application:
+[source,bash]
+----
+kubectl apply -k overlays/dev
+----
+
+4. Access the application:
+[source,bash]
+----
+minikube service {{.ProjectName}} -n {{.ProjectName}}
+----
+
+== CI/CD with GitHub Actions
+
+1. Create a '.github/workflows/deploy.yml' file in your repository:
+[source,yaml]
+----
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ "{{" }} secrets.DOCKER_USERNAME {{ "}}" }}
+        password: ${{ "{{" }} secrets.DOCKER_PASSWORD {{ "}}" }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: your-registry/{{.ProjectName}}:latest
+
+    - name: Deploy to Kubernetes
+      uses: azure/k8s-deploy@v1
+      with:
+        manifests: |
+          overlays/prod/deployment.yml
+          overlays/prod/service.yml
+        images: |
+          your-registry/{{.ProjectName}}:latest
+----
+
+== CI/CD with GitLab CI
+
+1. Create a '.gitlab-ci.yml' file in your repository:
+[source,yaml]
+----
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+build:
+  stage: build
+  script:
+    - docker build -t your-registry/{{.ProjectName}}:latest .
+    - docker push your-registry/{{.ProjectName}}:latest
+
+deploy:
+  stage: deploy
+  script:
+    - kubectl apply -k overlays/prod
+  only:
+    - main
 ----
 
 == Configuration

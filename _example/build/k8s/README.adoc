@@ -61,6 +61,139 @@ kubectl apply -k overlays/staging
 kubectl apply -k overlays/prod
 ----
 
+== Local Development with Kind or Minikube
+
+=== Prerequisites
+
+* Docker installed
+* Kind or Minikube installed
+
+=== Using Kind
+
+1. Create a Kind cluster:
+[source,bash]
+----
+kind create cluster
+----
+
+2. Build and load the Docker image:
+[source,bash]
+----
+docker build -t your-registry/craft:latest .
+kind load docker-image your-registry/craft:latest
+----
+
+3. Deploy the application:
+[source,bash]
+----
+kubectl apply -k overlays/dev
+----
+
+4. Access the application:
+[source,bash]
+----
+kubectl port-forward svc/craft 8080:80 -n craft
+----
+
+=== Using Minikube
+
+1. Start a Minikube cluster:
+[source,bash]
+----
+minikube start
+----
+
+2. Use Minikube's Docker daemon:
+[source,bash]
+----
+eval $(minikube docker-env)
+docker build -t your-registry/craft:latest .
+----
+
+3. Deploy the application:
+[source,bash]
+----
+kubectl apply -k overlays/dev
+----
+
+4. Access the application:
+[source,bash]
+----
+minikube service craft -n craft
+----
+
+== CI/CD with GitHub Actions
+
+1. Create a '.github/workflows/deploy.yml' file in your repository:
+[source,yaml]
+----
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: your-registry/craft:latest
+
+    - name: Deploy to Kubernetes
+      uses: azure/k8s-deploy@v1
+      with:
+        manifests: |
+          overlays/prod/deployment.yml
+          overlays/prod/service.yml
+        images: |
+          your-registry/craft:latest
+----
+
+== CI/CD with GitLab CI
+
+1. Create a '.gitlab-ci.yml' file in your repository:
+[source,yaml]
+----
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+build:
+  stage: build
+  script:
+    - docker build -t your-registry/craft:latest .
+    - docker push your-registry/craft:latest
+
+deploy:
+  stage: deploy
+  script:
+    - kubectl apply -k overlays/prod
+  only:
+    - main
+----
+
 == Configuration
 
 === Environment Variables
