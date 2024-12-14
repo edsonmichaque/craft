@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: craft
+      MARIADB_USER: craft
+      MARIADB_PASSWORD: craft
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d
+    networks:
+      - craft-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mariadb_data:
+
+networks:
+  craft-network:
+    driver: bridge

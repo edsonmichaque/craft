@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:1.18
+    environment:
+      DB_USER: craft
+      DB_PASSWORD: craft
+      DB_HOST: postgres
+      DB_NAME: craft
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "100"
+      ADMIN_USERS: "postgres,craft"
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - craft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U craft"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  craft-network:
+    external: true

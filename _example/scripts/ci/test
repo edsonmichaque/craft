@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Main test script
+# Entry point for testing the project
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+main() {
+    local cmd=${1:-test}
+    shift || true
+    
+    case "$cmd" in
+        test)
+            "${PROJECT_ROOT}/scripts/ci/tasks/test.sh" "$@"
+            ;;
+        lint)
+            "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh" "$@"
+            ;;
+        coverage)
+            "${PROJECT_ROOT}/scripts/ci/tasks/test.sh" --coverage "$@"
+            ;;
+        all)
+            log_info "Running all test tasks..."
+            
+            # Run linting first to catch any style issues
+            if ! "${PROJECT_ROOT}/scripts/ci/tasks/lint.sh" "$@"; then
+                log_error "Linting failed"
+                exit 1
+            fi
+            
+            # Run tests with coverage
+            if ! "${PROJECT_ROOT}/scripts/ci/tasks/test.sh" --coverage "$@"; then
+                log_error "Tests failed"
+                exit 1
+            fi
+            
+            log_info "All test tasks completed successfully!"
+            ;;
+        *)
+            log_error "Unknown command: $cmd"
+            log_error "Usage: $0 [test|lint|coverage|all]"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

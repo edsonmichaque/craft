@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:latest
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - craft-network
+
+volumes:
+  influxdb_data:
+
+networks:
+  craft-network:
+    driver: bridge

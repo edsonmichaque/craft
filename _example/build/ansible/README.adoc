@@ -1,0 +1,104 @@
+= Ansible Deployment Guide
+:toc: left
+:source-highlighter: highlight.js
+
+== Overview
+
+This directory contains Ansible playbooks and roles for deploying craft.
+
+== Directory Structure
+
+[source]
+----
+ansible/
+├── site.yml                # Main playbook
+├── roles/
+│   ├── common/            # Common setup
+│   ├── docker/            # Docker installation
+│   ├── database/          # Database setup
+│   └── application/       # Application deployment
+└── vars/
+    ├── main.yml           # Common variables
+    ├── dev.yml            # Development
+    ├── staging.yml        # Staging
+    └── prod.yml           # Production
+----
+
+== Quick Start
+
+=== Prerequisites
+
+* Ansible >= 2.9
+* SSH access to target servers
+* Python installed on targets
+
+=== Usage
+
+1. Create inventory file:
+[source,ini]
+----
+[production]
+app1.example.com
+app2.example.com
+
+[database]
+db1.example.com
+
+[production:vars]
+environment=production
+----
+
+2. Run playbook:
+[source,bash]
+----
+# Deploy to production
+ansible-playbook -i inventory site.yml -e "environment=production"
+
+# Deploy to staging
+ansible-playbook -i inventory site.yml -e "environment=staging"
+----
+
+== Roles
+
+=== Common
+
+* System updates
+* Basic packages
+* Security configuration
+
+=== Docker
+
+* Docker installation
+* Docker Compose setup
+* Registry configuration
+
+=== Database
+
+* Database installation
+* Initial setup
+* Backup configuration
+
+=== Application
+
+* Application deployment
+* Configuration management
+* Service setup
+
+== Variables
+
+[cols="2,1,2"]
+|===
+|Variable |Default |Description
+
+|app_dir
+|/opt/craft
+|Application directory
+
+|deploy_database
+|true
+|Whether to deploy database
+
+|docker_registry
+|docker.io
+|Docker registry URL
+|===

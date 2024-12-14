@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  odyssey:
+    image: yandex/odyssey:latest
+    volumes:
+      - ./odyssey.conf:/etc/odyssey/odyssey.conf
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - craft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  craft-network:
+    external: true

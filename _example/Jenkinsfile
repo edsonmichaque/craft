@@ -1,0 +1,85 @@
+
+pipeline {
+    agent any
+
+    environment {
+        GO_VERSION = '1.21'
+        PROJECT_NAME = 'your-project-name'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Set up Go') {
+            steps {
+                script {
+                    sh 'go version'
+                    sh "go mod download"
+                }
+            }
+        }
+
+        stage('Lint') {
+            steps {
+                script {
+                    sh 'make lint'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    sh 'make test'
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    sh 'make build'
+                }
+            }
+        }
+
+        stage('Docker Build and Push') {
+            when {
+                expression { return env.BRANCH_NAME == 'main' || env.BRANCH_NAME.startsWith('release/') }
+            }
+            steps {
+                script {
+                    sh 'make docker'
+                }
+            }
+        }
+
+        stage('Release') {
+            when {
+                expression { return env.TAG_NAME != null }
+            }
+            steps {
+                script {
+                    sh 'make package'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'bin/**', allowEmptyArchive: true
+            junit 'coverage/coverage.xml'
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
