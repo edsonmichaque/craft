@@ -4,7 +4,7 @@
 {{end}}
 
 {{define "framework_specific"}}
-func CmdVersion(ctx context.Context, appCtx *AppContext) *cli.Command {
+func CmdVersion(ctx context.Context, appCtx *Context) *cli.Command {
 	return &cli.Command{
 		Name:  "version",
 		Usage: "Print version information",

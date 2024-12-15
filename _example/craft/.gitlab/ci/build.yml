@@ -1,0 +1,14 @@
+build:
+  stage: build
+  script:
+    - make build
+  artifacts:
+    paths:
+      - bin/
+
+docker:
+  stage: package
+  script:
+    - make docker
+  only:
+    - tags

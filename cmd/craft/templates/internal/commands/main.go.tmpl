@@ -12,7 +12,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	appCtx := {{if gt (len .Binaries) 1}}{{.PackageName}}{{else}}commands{{end}}.NewAppContext()
+	appCtx := {{if gt (len .Binaries) 1}}{{.PackageName}}{{else}}commands{{end}}.NewContext()
 
 	if err := {{if gt (len .Binaries) 1}}{{.PackageName}}{{else}}commands{{end}}.Execute(ctx, appCtx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

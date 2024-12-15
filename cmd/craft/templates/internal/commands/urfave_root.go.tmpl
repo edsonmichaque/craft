@@ -3,7 +3,16 @@
 {{end}}
 
 {{define "framework_specific"}}
-func CmdRoot(ctx context.Context, appCtx *AppContext) *cli.App {
+type Context struct {
+	ConfigPath string
+	Debug      bool
+}
+
+func NewContext() *Context {
+	return &Context{}
+}
+
+func CmdRoot(ctx context.Context, appCtx *Context) *cli.App {
 	return &cli.App{
 		Name:  "{{.Binary}}",
 		Usage: "{{.ProjectName}} CLI",
@@ -30,7 +39,7 @@ func CmdRoot(ctx context.Context, appCtx *AppContext) *cli.App {
 	}
 }
 
-func Execute(ctx context.Context, appCtx *AppContext) error {
+func Execute(ctx context.Context, appCtx *Context) error {
 	return CmdRoot(ctx, appCtx).Run(os.Args)
 }
 {{end}}

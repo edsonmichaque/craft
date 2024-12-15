@@ -1,0 +1,6 @@
+release:
+  stage: deploy
+  script:
+    - make package
+  only:
+    - tags

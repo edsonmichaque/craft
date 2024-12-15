@@ -17,22 +17,36 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 
 	templates := map[string][]string{
 		"root":    {"internal/commands/base.go.tmpl", fmt.Sprintf("internal/commands/%s_root.go.tmpl", data.Framework)},
-		"version": {fmt.Sprintf("internal/commands/%s_root.go.tmpl", data.Framework), fmt.Sprintf("internal/commands/%s_version.go.tmpl", data.Framework)},
-		"server":  {fmt.Sprintf("internal/commands/%s_root.go.tmpl", data.Framework), fmt.Sprintf("internal/commands/%s_server.go.tmpl", data.Framework)},
+		"version": {"internal/commands/base.go.tmpl", fmt.Sprintf("internal/commands/%s_root.go.tmpl", data.Framework), fmt.Sprintf("internal/commands/%s_version.go.tmpl", data.Framework)},
+		"server":  {"internal/commands/base.go.tmpl", fmt.Sprintf("internal/commands/%s_root.go.tmpl", data.Framework), fmt.Sprintf("internal/commands/%s_server.go.tmpl", data.Framework)},
 	}
 
 	out := make(map[string]RenderOptions)
 
 	if len(data.Binaries) == 1 {
 		for key, tmpl := range templates {
-			out[fmt.Sprintf("internal/commands/%s.go", key)] = renderOptions(data, tmpl...)
+			out[fmt.Sprintf("internal/commands/%s.go", key)] = RenderOptions{
+				Templates: tmpl,
+				Data: CommandOptions{
+					Data:    data,
+					Binary:  data.Binaries[0],
+					Execute: "base",
+				},
+			}
 		}
 		return out, nil
 	}
 
 	for _, binary := range data.Binaries {
 		for key, tmpl := range templates {
-			out[fmt.Sprintf("internal/commands/%s/%s.go", binary, key)] = renderOptions(CommandOptions{Data: data, Binary: binary}, tmpl...)
+			out[fmt.Sprintf("internal/commands/%s/%s.go", binary, key)] = RenderOptions{
+				Templates: tmpl,
+				Data: CommandOptions{
+					Data:    data,
+					Binary:  binary,
+					Execute: "base",
+				},
+			}
 		}
 	}
 
@@ -45,8 +59,11 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 	for _, binary := range data.Binaries {
 		out[fmt.Sprintf("cmd/%s/main.go", binary)] = RenderOptions{
 			Templates: []string{"internal/commands/main.go.tmpl"},
-			Data:      CommandOptions{Data: data, Binary: binary},
-			Execute:   "main",
+			Data: CommandOptions{
+				Data:    data,
+				Binary:  binary,
+				Execute: "main",
+			},
 		}
 	}
 
@@ -55,9 +72,15 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 
 type CommandOptions struct {
 	Data
-	Binary string
+	Binary  string
+	Execute string
 }
 
 func (cmd CommandOptions) PackageName() string {
 	return strings.ReplaceAll(strcase.ToKebab(cmd.Binary), "-", "")
+}
+
+type RenderOptionsWithExecute struct {
+	RenderOptions
+	Execute string
 }

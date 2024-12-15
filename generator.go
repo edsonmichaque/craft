@@ -105,7 +105,7 @@ func (g *Manager) generateFile(_ context.Context, dst string, template *template
 	v := reflect.ValueOf(data)
 	executeField := v.FieldByName("Execute")
 
-	if executeField.IsValid() && executeField.Kind() == reflect.String {
+	if executeField.IsValid() && executeField.Kind() == reflect.String && executeField.String() != "" {
 		executeTemplateName := executeField.String()
 		if err := template.ExecuteTemplate(buf, executeTemplateName, data); err != nil {
 			return nil, fmt.Errorf("failed to execute template %s: %w", dst, err)

@@ -3,7 +3,16 @@
 {{end}}
 
 {{define "framework_specific"}}
-func CmdRoot(ctx context.Context, appCtx *AppContext) *cobra.Command {
+type Context struct {
+	ConfigPath string
+	Debug      bool
+}
+
+func NewContext() *Context {
+	return &Context{}
+}
+
+func CmdRoot(ctx context.Context, appCtx *Context) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "{{.Binary}}",
 		Short: "{{.ProjectName}} CLI",
@@ -23,7 +32,7 @@ func CmdRoot(ctx context.Context, appCtx *AppContext) *cobra.Command {
 	return cmd
 }
 
-func Execute(ctx context.Context, appCtx *AppContext) error {
+func Execute(ctx context.Context, appCtx *Context) error {
 	return CmdRoot(ctx, appCtx).Execute()
 }
 {{end}}

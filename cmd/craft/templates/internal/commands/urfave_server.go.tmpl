@@ -3,7 +3,7 @@
 {{end}}
 
 {{define "framework_specific"}}
-func CmdServer(ctx context.Context, appCtx *AppContext) *cli.Command {
+func CmdServer(ctx context.Context, appCtx *Context) *cli.Command {
 	var (
 		port int
 		host string

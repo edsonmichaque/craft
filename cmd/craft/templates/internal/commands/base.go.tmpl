@@ -9,15 +9,6 @@ import (
 	{{template "framework_imports" .}}
 )
 
-type AppContext struct {
-	ConfigPath string
-	Debug      bool
-}
-
-func NewAppContext() *AppContext {
-	return &AppContext{}
-}
-
 {{template "framework_specific" .}}
 {{end}}
 
