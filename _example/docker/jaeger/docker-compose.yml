@@ -17,4 +17,4 @@ services:
 
 networks:
   craft-network:
-    driver: bridge
+    driver: bridge`

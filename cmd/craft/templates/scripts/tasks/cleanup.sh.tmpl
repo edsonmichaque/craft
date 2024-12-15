@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# Cleanup script
+# Removes temporary files and build artifacts
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+# Cleanup functions for different artifact types
+cleanup_build_artifacts() {
+    local dry_run=$1
+    local paths=(
+        "${PROJECT_ROOT}/bin"
+        "${PROJECT_ROOT}/dist"
+        "${PROJECT_ROOT}/.build-cache"
+    )
+    
+    log_info "Cleaning build artifacts..."
+    for path in "${paths[@]}"; do
+        if [[ "$dry_run" == "true" ]]; then
+            log_info "[DRY RUN] Would remove: $path"
+        else
+            rm -rf "$path" && log_debug "Removed: $path"
+        fi
+    done
+}
+
+cleanup_test_artifacts() {
+    local dry_run=$1
+    local paths=(
+        "${PROJECT_ROOT}/coverage"
+        "${PROJECT_ROOT}/.test-cache"
+    )
+    
+    log_info "Cleaning test artifacts..."
+    # Remove test coverage directories
+    for path in "${paths[@]}"; do
+        if [[ "$dry_run" == "true" ]]; then
+            log_info "[DRY RUN] Would remove: $path"
+        else
+            rm -rf "$path" && log_debug "Removed: $path"
+        fi
+    done
+    
+    # Find and remove test binaries
+    if [[ "$dry_run" == "true" ]]; then
+        log_info "[DRY RUN] Would remove test binaries:"
+        find "${PROJECT_ROOT}" -type f -name "*.test" -print
+    else
+        find "${PROJECT_ROOT}" -type f -name "*.test" -delete -print | while read -r file; do
+            log_debug "Removed: $file"
+        done
+    fi
+}
+
+cleanup_generated_files() {
+    local dry_run=$1
+    local paths=(
+        "${PROJECT_ROOT}/pkg/gen"
+        "${PROJECT_ROOT}/api/gen"
+        "${PROJECT_ROOT}/internal/gen"
+        "${PROJECT_ROOT}/docs/gen"
+    )
+    
+    log_info "Cleaning generated files..."
+    for path in "${paths[@]}"; do
+        if [[ "$dry_run" == "true" ]]; then
+            log_info "[DRY RUN] Would remove: $path"
+        else
+            rm -rf "$path" && log_debug "Removed: $path"
+        fi
+    done
+}
+
+cleanup_dependencies() {
+    local dry_run=$1
+    
+    log_info "Cleaning dependencies..."
+    if [[ "$dry_run" == "true" ]]; then
+        log_info "[DRY RUN] Would clean Go mod cache"
+        log_info "[DRY RUN] Would remove vendor directory"
+    else
+        go clean -modcache && log_debug "Cleaned Go mod cache"
+        rm -rf "${PROJECT_ROOT}/vendor" && log_debug "Removed vendor directory"
+    fi
+}
+
+cleanup_docker() {
+    local dry_run=$1
+    
+    log_info "Cleaning Docker artifacts..."
+    if [[ "$dry_run" == "true" ]]; then
+        log_info "[DRY RUN] Would clean Docker build cache"
+    else
+        if command -v docker >/dev/null 2>&1; then
+            docker system prune -f --filter "label=project={{.ProjectName}}" && log_debug "Cleaned Docker build cache"
+        else
+            log_warn "Docker not found, skipping Docker cleanup"
+        fi
+    fi
+}
+
+cleanup_ide() {
+    local dry_run=$1
+    local paths=(
+        "${PROJECT_ROOT}/.idea"
+        "${PROJECT_ROOT}/.vscode"
+        "${PROJECT_ROOT}/.vs"
+        "${PROJECT_ROOT}/*.iml"
+        "${PROJECT_ROOT}/.settings"
+        "${PROJECT_ROOT}/.project"
+        "${PROJECT_ROOT}/.classpath"
+    )
+    
+    log_info "Cleaning IDE files..."
+    for path in "${paths[@]}"; do
+        if [[ "$dry_run" == "true" ]]; then
+            log_info "[DRY RUN] Would remove: $path"
+        else
+            rm -rf "$path" && log_debug "Removed: $path"
+        fi
+    done
+}
+
+print_disk_usage() {
+    local before=$1
+    local after=$2
+    local saved
+    saved=$((before - after))
+    
+    log_info "Disk usage summary:"
+    log_info "  Before: $(numfmt --to=iec-i --suffix=B $before)"
+    log_info "  After:  $(numfmt --to=iec-i --suffix=B $after)"
+    log_info "  Saved:  $(numfmt --to=iec-i --suffix=B $saved)"
+}
+
+main() {
+    local clean_all=false
+    local dry_run=false
+    local clean_docker=false
+    local clean_ide=false
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all)
+                clean_all=true
+                shift
+                ;;
+            --dry-run)
+                dry_run=true
+                shift
+                ;;
+            --docker)
+                clean_docker=true
+                shift
+                ;;
+            --ide)
+                clean_ide=true
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0 [options]"
+                echo "Options:"
+                echo "  --all      Clean everything, including dependencies"
+                echo "  --dry-run  Show what would be cleaned without actually removing"
+                echo "  --docker   Clean Docker build cache"
+                echo "  --ide      Clean IDE-specific files"
+                echo "  --help     Show this help message"
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Calculate initial disk usage
+    local disk_usage_before
+    disk_usage_before=$(du -sb "${PROJECT_ROOT}" 2>/dev/null | cut -f1)
+    
+    # Run cleanup functions
+    cleanup_build_artifacts "$dry_run"
+    cleanup_test_artifacts "$dry_run"
+    cleanup_generated_files "$dry_run"
+    
+    if [[ "$clean_all" == "true" ]]; then
+        cleanup_dependencies "$dry_run"
+    fi
+    
+    if [[ "$clean_docker" == "true" ]]; then
+        cleanup_docker "$dry_run"
+    fi
+    
+    if [[ "$clean_ide" == "true" ]]; then
+        cleanup_ide "$dry_run"
+    fi
+    
+    # Calculate final disk usage and print summary
+    if [[ "$dry_run" != "true" ]]; then
+        local disk_usage_after
+        disk_usage_after=$(du -sb "${PROJECT_ROOT}" 2>/dev/null | cut -f1)
+        print_disk_usage "$disk_usage_before" "$disk_usage_after"
+    fi
+    
+    log_info "Cleanup ${dry_run:+[DRY RUN] }complete!"
+}
+
+main "$@"

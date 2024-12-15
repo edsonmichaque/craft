@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Dev environment setup script
+# Allows choosing between Docker, Kubernetes, Docker Swarm, or running the binary directly
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+main() {
+    local choice=${1:-binary}
+
+    case "$choice" in
+        docker)
+            start_docker
+            ;;
+        k8s)
+            start_k8s
+            ;;
+        swarm)
+            start_swarm
+            ;;
+        binary)
+            start_binary
+            ;;
+        *)
+            log_error "Unknown choice: $choice"
+            log_error "Usage: $0 [docker|k8s|swarm|binary]"
+            exit 1
+            ;;
+    esac
+}
+
+start_docker() {
+    log_info "Starting development environment with Docker..."
+    docker-compose up -d
+}
+
+start_k8s() {
+    log_info "Starting development environment with Kubernetes..."
+    kubectl apply -k build/k8s/overlays/dev
+}
+
+start_swarm() {
+    log_info "Starting development environment with Docker Swarm..."
+    docker stack deploy -c build/docker-swarm/docker-compose.yml {{.ProjectName}}
+}
+
+start_binary() {
+    log_info "Starting the binary directly..."
+    ./bin/{{.ProjectName}}
+}
+
+main "$@"

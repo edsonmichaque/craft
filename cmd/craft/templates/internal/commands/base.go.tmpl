@@ -1,0 +1,26 @@
+{{define "base"}}
+{{template "package" .}}
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	{{template "framework_imports" .}}
+)
+
+type AppContext struct {
+	ConfigPath string
+	Debug      bool
+}
+
+func NewAppContext() *AppContext {
+	return &AppContext{}
+}
+
+{{template "framework_specific" .}}
+{{end}}
+
+{{define "package"}}
+package {{if eq (len .Binaries) 1}}commands{{else}}{{.Binary}}{{end}}
+{{end}}

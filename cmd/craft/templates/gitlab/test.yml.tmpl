@@ -1,0 +1,15 @@
+lint:
+  stage: test
+  script:
+    - make lint
+
+test:
+  stage: test
+  script:
+    - make test
+  coverage: '/coverage: \d+\.\d+/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cover

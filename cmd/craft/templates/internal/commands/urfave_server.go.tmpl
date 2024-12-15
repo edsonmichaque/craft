@@ -1,0 +1,37 @@
+{{define "framework_imports"}}
+"github.com/urfave/cli/v2"
+{{end}}
+
+{{define "framework_specific"}}
+func CmdServer(ctx context.Context, appCtx *AppContext) *cli.Command {
+	var (
+		port int
+		host string
+	)
+
+	return &cli.Command{
+		Name:  "server",
+		Usage: "Start the server",
+		Flags: []cli.Flag{
+			&cli.IntFlag{
+				Name:        "port",
+				Value:       8080,
+				Usage:       "server port",
+				Destination: &port,
+			},
+			&cli.StringFlag{
+				Name:        "host",
+				Value:       "0.0.0.0",
+				Usage:       "server host",
+				Destination: &host,
+			},
+		},
+		Action: func(c *cli.Context) error {
+			if appCtx.Debug {
+				log.Println("Debug mode enabled")
+			}
+			return runServer(ctx, host, port)
+		},
+	}
+}
+{{end}}

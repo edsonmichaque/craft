@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME:={{.ProjectName}}}
+  namespace: ${NAMESPACE:={{.ProjectName}}}
+  labels:
+    app: ${APP_NAME:={{.ProjectName}}}
+spec:
+  replicas: ${REPLICAS:=3}
+  selector:
+    matchLabels:
+      app: ${APP_NAME:={{.ProjectName}}}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME:={{.ProjectName}}}
+      annotations:
+        checksum/config: ${CONFIG_CHECKSUM}
+    spec:
+      containers:
+      - name: ${APP_NAME:={{.ProjectName}}}
+        image: ${IMAGE_REPOSITORY:={{.ProjectName}}}:${IMAGE_TAG:=latest}
+        imagePullPolicy: ${IMAGE_PULL_POLICY:=IfNotPresent}
+        ports:
+        - containerPort: ${PORT:=8080}
+        envFrom:
+        - configMapRef:
+            name: ${APP_NAME:={{.ProjectName}}}-env
+        - secretRef:
+            name: ${APP_NAME:={{.ProjectName}}}-secrets
+        env:
+        - name: {{.EnvPrefix}}_CONFIG_FILE
+          value: /etc/{{.ProjectName}}/{{.ConfigFile}}
+        - name: {{.EnvPrefix}}_CONFIG_FORMAT
+          value: {{.ConfigFormat}}
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: config
+          mountPath: /etc/{{.ProjectName}}
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: ${HEALTH_PATH:=/health}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${LIVENESS_DELAY:=5}
+          periodSeconds: ${LIVENESS_PERIOD:=10}
+        readinessProbe:
+          httpGet:
+            path: ${READY_PATH:=/ready}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${READINESS_DELAY:=5}
+          periodSeconds: ${READINESS_PERIOD:=10}
+        resources:
+          requests:
+            cpu: ${CPU_REQUEST:=100m}
+            memory: ${MEMORY_REQUEST:=128Mi}
+          limits:
+            cpu: ${CPU_LIMIT:=500m}
+            memory: ${MEMORY_LIMIT:=512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: ${APP_NAME:={{.ProjectName}}}-config
+      - name: tmp
+        emptyDir: {}

@@ -1,0 +1,22 @@
+{{define "main"}}
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"{{.ModulePrefix}}/internal/commands{{if gt (len .Binaries) 1}}/{{.PackageName}}{{end}}"
+)
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	appCtx := {{if gt (len .Binaries) 1}}{{.PackageName}}{{else}}commands{{end}}.NewAppContext()
+
+	if err := {{if gt (len .Binaries) 1}}{{.PackageName}}{{else}}commands{{end}}.Execute(ctx, appCtx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+{{end}}

@@ -12,9 +12,9 @@ import (
 
 // Config holds all configuration sections
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server" yaml:"server"`
-	Database DatabaseConfig `mapstructure:"database" yaml:"database"`
-	Logger   LoggerConfig  `mapstructure:"logger" yaml:"logger"`
+	Server   ServerConfig   ` + "`mapstructure:\"server\" yaml:\"server\"`" + `
+	Database DatabaseConfig ` + "`mapstructure:\"database\" yaml:\"database\"`" + `
+	Logger   LoggerConfig  ` + "`mapstructure:\"logger\" yaml:\"logger\"`" + `
 }
 
 // Load reads configuration from file and environment variables
@@ -107,4 +107,41 @@ func (c *Config) Validate() error {
 	}
 	// Add more validation as needed
 	return nil
+}`,
+
+		"server.go": `package config
+
+import "time"
+
+// ServerConfig holds all server-related configuration
+type ServerConfig struct {
+	Host           string        ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
+	Port           int           ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
+	ReadTimeout    time.Duration ` + "`mapstructure:\"read_timeout\" yaml:\"read_timeout\"`" + `
+	WriteTimeout   time.Duration ` + "`mapstructure:\"write_timeout\" yaml:\"write_timeout\"`" + `
+	MaxHeaderBytes int           ` + "`mapstructure:\"max_header_bytes\" yaml:\"max_header_bytes\"`" + `
+	AllowedOrigins []string      ` + "`mapstructure:\"allowed_origins\" yaml:\"allowed_origins\"`" + `
+}
+
+// GetAddress returns the full address string for the server
+func (c ServerConfig) GetAddress() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}`,
+
+		"database.go": `package config
+
+// DatabaseConfig holds all database-related configuration
+type DatabaseConfig struct {
+	Host     string ` + "`mapstructure:\"host\" yaml:\"host\"`" + `
+	Port     int    ` + "`mapstructure:\"port\" yaml:\"port\"`" + `
+	Name     string ` + "`mapstructure:\"name\" yaml:\"name\"`" + `
+	User     string ` + "`mapstructure:\"user\" yaml:\"user\"`" + `
+	Password string ` + "`mapstructure:\"password\" yaml:\"password\"`" + `
+	SSLMode  string ` + "`mapstructure:\"ssl_mode\" yaml:\"ssl_mode\"`" + `
+}
+
+// GetDSN returns the database connection string
+func (c DatabaseConfig) GetDSN() string {
+	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
+		c.Host, c.Port, c.Name, c.User, c.Password, c.SSLMode)
 }

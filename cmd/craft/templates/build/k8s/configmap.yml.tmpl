@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.ProjectName}}-env
+  namespace: {{.ProjectName}}
+data:
+  # Application configuration
+  {{.EnvPrefix}}_APP_NAME: "{{.ProjectName}}"
+  {{.EnvPrefix}}_CONFIG_FILE: "/etc/{{.ProjectName}}/{{.ConfigFile}}"
+  {{.EnvPrefix}}_CONFIG_FORMAT: "{{.ConfigFormat}}"
+  {{.EnvPrefix}}_CONFIG_DIRS: "{{range .ConfigDirs}}{{.}},{{end}}"
+  
+  # Runtime configuration
+  GO_VERSION: "{{.GoVersion}}"
+  MODULE_PREFIX: "{{.ModulePrefix}}"
+  
+  # Feature flags
+  {{range .Includes}}
+  FEATURE_{{. }}_ENABLED: "true"
+  {{end}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.ProjectName}}-config
+  namespace: {{.ProjectName}}
+data:
+  {{.ConfigFile}}: |
+    app_name: {{.ProjectName}}
+    module_prefix: {{.ModulePrefix}}
+    environment: ${ENV:=production}
+    log_level: ${LOG_LEVEL:=info}
+    
+    server:
+      port: ${PORT:=8080}
+      timeout: ${TIMEOUT:=30s}
+    
+    features:
+      {{range .Includes}}
+      {{.}}: true
+      {{end}}
+    
+    config_dirs:
+      {{range .ConfigDirs}}
+      - {{.}}
+      {{end}}

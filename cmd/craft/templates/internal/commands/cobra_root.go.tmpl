@@ -1,0 +1,29 @@
+{{define "framework_imports"}}
+"github.com/spf13/cobra"
+{{end}}
+
+{{define "framework_specific"}}
+func CmdRoot(ctx context.Context, appCtx *AppContext) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "{{.Binary}}",
+		Short: "{{.ProjectName}} CLI",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Setup logging, tracing, etc.
+		},
+	}
+
+	cmd.PersistentFlags().StringVar(&appCtx.ConfigPath, "config", "", "config file path")
+	cmd.PersistentFlags().BoolVar(&appCtx.Debug, "debug", false, "enable debug mode")
+
+	cmd.AddCommand(
+		CmdVersion(ctx, appCtx),
+		CmdServer(ctx, appCtx),
+	)
+
+	return cmd
+}
+
+func Execute(ctx context.Context, appCtx *AppContext) error {
+	return CmdRoot(ctx, appCtx).Execute()
+}
+{{end}}

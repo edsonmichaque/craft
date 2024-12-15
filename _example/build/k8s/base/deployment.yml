@@ -1,24 +1,74 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: craft
+  name: ${APP_NAME:=craft}
+  namespace: ${NAMESPACE:=craft}
+  labels:
+    app: ${APP_NAME:=craft}
 spec:
-  replicas: 1
+  replicas: ${REPLICAS:=3}
   selector:
     matchLabels:
-      app: craft
+      app: ${APP_NAME:=craft}
   template:
     metadata:
       labels:
-        app: craft
+        app: ${APP_NAME:=craft}
+      annotations:
+        checksum/config: ${CONFIG_CHECKSUM}
     spec:
       containers:
-      - name: craft
-        image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+      - name: ${APP_NAME:=craft}
+        image: ${IMAGE_REPOSITORY:=craft}:${IMAGE_TAG:=latest}
+        imagePullPolicy: ${IMAGE_PULL_POLICY:=IfNotPresent}
         ports:
-        - containerPort: 8080
+        - containerPort: ${PORT:=8080}
         envFrom:
         - configMapRef:
-            name: craft-env
+            name: ${APP_NAME:=craft}-env
         - secretRef:
-            name: craft-secrets
+            name: ${APP_NAME:=craft}-secrets
+        env:
+        - name: CRAFT_CONFIG_FILE
+          value: /etc/craft/config.yml
+        - name: CRAFT_CONFIG_FORMAT
+          value: yml
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: config
+          mountPath: /etc/craft
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: ${HEALTH_PATH:=/health}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${LIVENESS_DELAY:=5}
+          periodSeconds: ${LIVENESS_PERIOD:=10}
+        readinessProbe:
+          httpGet:
+            path: ${READY_PATH:=/ready}
+            port: ${PORT:=8080}
+          initialDelaySeconds: ${READINESS_DELAY:=5}
+          periodSeconds: ${READINESS_PERIOD:=10}
+        resources:
+          requests:
+            cpu: ${CPU_REQUEST:=100m}
+            memory: ${MEMORY_REQUEST:=128Mi}
+          limits:
+            cpu: ${CPU_LIMIT:=500m}
+            memory: ${MEMORY_LIMIT:=512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: ${APP_NAME:=craft}-config
+      - name: tmp
+        emptyDir: {}
