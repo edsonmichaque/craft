@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
@@ -39,6 +40,7 @@ type Data struct {
 type RenderOptions struct {
 	Templates []string
 	Data      interface{}
+	Execute   string
 }
 
 // Generator interface with Configure and Generate methods
@@ -99,10 +101,19 @@ func (g *Manager) generateFiles(ctx context.Context, m map[string]RenderOptions)
 func (g *Manager) generateFile(_ context.Context, dst string, template *template.Template, data interface{}) (map[string][]byte, error) {
 	buf := bytes.NewBuffer(nil)
 
-	log.Printf("Generating file %s", dst)
+	// Use reflection to check if the data has an "Execute" field
+	v := reflect.ValueOf(data)
+	executeField := v.FieldByName("Execute")
 
-	if err := template.Execute(buf, data); err != nil {
-		return nil, fmt.Errorf("failed to execute template %s: %w", dst, err)
+	if executeField.IsValid() && executeField.Kind() == reflect.String {
+		executeTemplateName := executeField.String()
+		if err := template.ExecuteTemplate(buf, executeTemplateName, data); err != nil {
+			return nil, fmt.Errorf("failed to execute template %s: %w", dst, err)
+		}
+	} else {
+		if err := template.Execute(buf, data); err != nil {
+			return nil, fmt.Errorf("failed to execute template %s: %w", dst, err)
+		}
 	}
 
 	// Return the generated content in a map with the destination as the key

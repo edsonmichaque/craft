@@ -2,6 +2,7 @@ package craft
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -32,6 +33,20 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 	for _, binary := range data.Binaries {
 		for key, tmpl := range templates {
 			out[fmt.Sprintf("internal/commands/%s/%s.go", binary, key)] = renderOptions(CommandOptions{Data: data, Binary: binary}, tmpl...)
+		}
+	}
+
+	log.Printf("Generated commands: %#+v", out)
+
+	for k, v := range out {
+		log.Printf("Generated command: %s %#+v", k, v.Templates)
+	}
+
+	for _, binary := range data.Binaries {
+		out[fmt.Sprintf("cmd/%s/main.go", binary)] = RenderOptions{
+			Templates: []string{"internal/commands/main.go.tmpl"},
+			Data:      CommandOptions{Data: data, Binary: binary},
+			Execute:   "main",
 		}
 	}
 
