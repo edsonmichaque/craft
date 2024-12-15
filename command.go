@@ -2,7 +2,6 @@ package craft
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -50,12 +49,6 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 		}
 	}
 
-	log.Printf("Generated commands: %#+v", out)
-
-	for k, v := range out {
-		log.Printf("Generated command: %s %#+v", k, v.Templates)
-	}
-
 	for _, binary := range data.Binaries {
 		out[fmt.Sprintf("cmd/%s/main.go", binary)] = RenderOptions{
 			Templates: []string{"internal/commands/main.go.tmpl"},
@@ -64,6 +57,20 @@ func GenerateCommands(data Data) (map[string]RenderOptions, error) {
 				Binary:  binary,
 				Execute: "main",
 			},
+		}
+	}
+
+	if data.Binaries != nil {
+		for _, binary := range data.Binaries {
+			out[fmt.Sprintf("internal/commands/%s/README.md", binary)] = RenderOptions{
+				Templates: []string{fmt.Sprintf("internal/commands/readme_%s.md.tmpl", data.Framework)},
+				Data:      data,
+			}
+		}
+	} else {
+		out["internal/commands/README.md"] = RenderOptions{
+			Templates: []string{"internal/commands/readme_base.md.tmpl"},
+			Data:      data,
 		}
 	}
 
